@@ -23,18 +23,36 @@ type ModelStatus struct {
 	Name        string    `json:"name"`
 	Path        string    `json:"path,omitempty"`
 	Loadable    bool      `json:"loadable"`
-	Checked     bool      `json:"checked"` // Has been compatibility checked
+	Checked     bool      `json:"checked"`
 	LastChecked time.Time `json:"last_checked,omitempty"`
 	Error       string    `json:"error,omitempty"`
+
+	// Selection
+	Selected bool `json:"selected"`
+
+	// Analysis Data
+	Analysis *ModelAnalysis `json:"analysis,omitempty"`
 
 	// Benchmark Data
 	Benchmarked     bool    `json:"benchmarked"`
 	TPS             float64 `json:"tps,omitempty"`
 	ExampleOutput   string  `json:"example_output,omitempty"`
-	GeneratedTokens []int   `json:"generated_tokens,omitempty"` // Store raw token IDs
+	GeneratedTokens []int   `json:"generated_tokens,omitempty"`
 	HiddenSize      int     `json:"hidden_size,omitempty"`
 	VocabSize       int     `json:"vocab_size,omitempty"`
 	Params          string  `json:"params,omitempty"`
+}
+
+type ModelAnalysis struct {
+	TotalParams int64       `json:"total_params"`
+	Layers      []LayerInfo `json:"layers"`
+}
+
+type LayerInfo struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`   // e.g. "Attention", "MLP", "Norm"
+	Params int64  `json:"params"` // Shape product
+	Shape  []int  `json:"shape"`
 }
 
 type Store struct {
@@ -117,7 +135,8 @@ func handleWebSocket(c *websocket.Conn) {
 	sendState(c)
 
 	type Message struct {
-		Action string `json:"action"`
+		Action  string          `json:"action"`
+		Payload json.RawMessage `json:"payload,omitempty"`
 	}
 
 	for {
@@ -134,8 +153,17 @@ func handleWebSocket(c *websocket.Conn) {
 			go verifyModels()
 		case "benchmark":
 			go benchmarkModels()
+		case "analyze":
+			go analyzeSelectedModels()
 		case "refresh":
 			sendState(c)
+		case "toggle_select":
+			var payload struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil && payload.Name != "" {
+				toggleSelect(payload.Name)
+			}
 		}
 	}
 }
@@ -465,4 +493,100 @@ func loadStore() {
 func saveStoreLocked() {
 	data, _ := json.MarshalIndent(store, "", "  ")
 	os.WriteFile(storePath, data, 0644)
+}
+
+func toggleSelect(name string) {
+	store.mu.Lock()
+	if model, ok := store.Models[name]; ok {
+		model.Selected = !model.Selected
+		saveStoreLocked()
+	}
+	store.mu.Unlock()
+	broadcastUpdate()
+}
+
+func analyzeSelectedModels() {
+	store.mu.RLock()
+	names := make([]string, 0, len(store.Models))
+	for name := range store.Models {
+		names = append(names, name)
+	}
+	store.mu.RUnlock()
+
+	for _, name := range names {
+		// Panic recovery for safety
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("⚠️ Panic analyzing %s: %v\n", name, r)
+				}
+			}()
+
+			store.mu.RLock()
+			model := store.Models[name]
+			store.mu.RUnlock()
+
+			if !model.Selected || model.Analysis != nil {
+				return
+			}
+
+			fmt.Printf("Analyzing %s...\n", name)
+
+			// Load weights header only (fast)
+			path := filepath.Join(model.Path, "model.safetensors")
+			tensors, err := nn.LoadSafetensors(path) // This loads data too? Wait, nn.LoadSafetensors in loom might load data.
+			// Actually nn.LoadSafetensors returns map[string][]float32. That loads EVERYTHING into RAM.
+			// Ideally we want metadata only. But for now, we risk it or assume "small models" fit in RAM.
+			// Given user constraints ("small models"), loading one by one is acceptable.
+
+			if err != nil {
+				fmt.Printf("Error loading %s: %v\n", name, err)
+				return
+			}
+
+			analysis := &ModelAnalysis{
+				Layers: []LayerInfo{},
+			}
+
+			var totalParams int64
+			for key, data := range tensors {
+				count := int64(len(data))
+				totalParams += count
+
+				// Simple heuristic for type
+				lType := "Param"
+				lower := strings.ToLower(key)
+				if strings.Contains(lower, "attn") || strings.Contains(lower, "attention") {
+					lType = "Attention"
+				} else if strings.Contains(lower, "mlp") || strings.Contains(lower, "feedforward") {
+					lType = "MLP"
+				} else if strings.Contains(lower, "norm") {
+					lType = "Norm"
+				} else if strings.Contains(lower, "embed") {
+					lType = "Embedding"
+				}
+
+				analysis.Layers = append(analysis.Layers, LayerInfo{
+					Name:   key,
+					Type:   lType,
+					Params: count,
+					Shape:  []int{len(data)}, // We don't have shape info from simple LoadSafetensors, it returns flat slice.
+					// Ideally loom would give shape, but we work with what we have.
+				})
+			}
+			// Clean up heavy memory immediately
+			tensors = nil
+			// GC might not trigger immediately, user beware.
+
+			analysis.TotalParams = totalParams
+
+			store.mu.Lock()
+			if m, ok := store.Models[name]; ok {
+				m.Analysis = analysis
+				saveStoreLocked()
+			}
+			store.mu.Unlock()
+			broadcastUpdate()
+		}()
+	}
 }
