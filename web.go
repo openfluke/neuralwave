@@ -6,6 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -570,13 +573,17 @@ func analyzeSelectedModels() {
 					Name:   key,
 					Type:   lType,
 					Params: count,
-					Shape:  []int{len(data)}, // We don't have shape info from simple LoadSafetensors, it returns flat slice.
-					// Ideally loom would give shape, but we work with what we have.
+					Shape:  []int{len(data)}, // We don't have shape info from simple LoadSafetensors
 				})
 			}
+
 			// Clean up heavy memory immediately
 			tensors = nil
-			// GC might not trigger immediately, user beware.
+
+			// Natural Sort Layers
+			sort.Slice(analysis.Layers, func(i, j int) bool {
+				return naturalLess(analysis.Layers[i].Name, analysis.Layers[j].Name)
+			})
 
 			analysis.TotalParams = totalParams
 
@@ -589,4 +596,31 @@ func analyzeSelectedModels() {
 			broadcastUpdate()
 		}()
 	}
+}
+
+// naturalLess compares two strings with natural number ordering
+func naturalLess(s1, s2 string) bool {
+	re := regexp.MustCompile(`\d+|\D+`)
+	parts1 := re.FindAllString(s1, -1)
+	parts2 := re.FindAllString(s2, -1)
+
+	for i := 0; i < len(parts1) && i < len(parts2); i++ {
+		p1 := parts1[i]
+		p2 := parts2[i]
+
+		// Check if both are numbers
+		n1, err1 := strconv.Atoi(p1)
+		n2, err2 := strconv.Atoi(p2)
+
+		if err1 == nil && err2 == nil {
+			if n1 != n2 {
+				return n1 < n2
+			}
+		} else {
+			if p1 != p2 {
+				return p1 < p2
+			}
+		}
+	}
+	return len(parts1) < len(parts2)
 }
