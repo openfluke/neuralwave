@@ -491,6 +491,14 @@ func loadStore() {
 	if store.Models == nil {
 		store.Models = make(map[string]*ModelStatus)
 	}
+	// Enforce sort on load
+	for _, m := range store.Models {
+		if m.Analysis != nil {
+			sort.Slice(m.Analysis.Layers, func(i, j int) bool {
+				return naturalLess(m.Analysis.Layers[i].Name, m.Analysis.Layers[j].Name)
+			})
+		}
+	}
 }
 
 func saveStoreLocked() {
@@ -529,10 +537,13 @@ func analyzeSelectedModels() {
 			model := store.Models[name]
 			store.mu.RUnlock()
 
-			if !model.Selected || model.Analysis != nil {
+			if !model.Selected {
 				return
 			}
 
+			// If already analyzed, maybe we just want to re-sort?
+			// But for now, let's allow re-analysis to ensure data consistency if user clicks 'Analyze'.
+			// This fixes the 'Processing' hang if everything was skipped.
 			fmt.Printf("Analyzing %s...\n", name)
 
 			// Load weights header only (fast)
