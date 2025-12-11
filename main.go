@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -27,6 +28,16 @@ var (
 const MAX_TOKENS = 50
 
 func main() {
+	cliMode := flag.Bool("cli", false, "Start the CLI interface instead of Web UI")
+	port := flag.Int("port", 3000, "Port for web interface")
+	flag.Parse()
+
+	if !*cliMode {
+		runWeb(*port)
+		return
+	}
+
+	// CLI Mode
 	// Discover all models in HuggingFace cache
 	homeDir, _ := os.UserHomeDir()
 	hubDir := filepath.Join(homeDir, ".cache", "huggingface", "hub")

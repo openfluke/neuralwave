@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuralWave Dashboard</title>
+    <!-- Ignore production warning for local tool -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: {
+                            900: '#111827',
+                            800: '#1f2937',
+                            700: '#374151',
+                        },
+                        cyan: {
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .glass {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen selection:bg-cyan-500 selection:text-white">
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Header -->
+        <header class="mb-10 flex justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
+                    NeuralWave
+                </h1>
+                <p class="text-gray-400 mt-1">Real-time Verified Model Benchmarking</p>
+            </div>
+            <div class="flex items-center space-x-2">
+                <div id="connStatus" class="h-3 w-3 bg-red-500 rounded-full"></div>
+                <span id="connText" class="text-xs font-mono text-gray-400">DISCONNECTED</span>
+            </div>
+        </header>
+
+        <!-- Stats & Actions Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+            <!-- Stat Card -->
+            <div class="glass rounded-xl p-6 relative overflow-hidden group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-cyan-500/10 rounded-full group-hover:bg-cyan-500/20 transition-all"></div>
+                <dt class="text-sm font-medium text-gray-400">Total Models</dt>
+                <dd class="mt-2 text-3xl font-bold text-white" id="totalModels">0</dd>
+            </div>
+            
+            <!-- Actions -->
+            <button onclick="sendAction('scan')" class="group relative flex items-center justify-center p-6 rounded-xl bg-gray-900 border border-gray-800 hover:border-cyan-500/50 transition-all hover:shadow-[0_0_20px_rgba(6,182,212,0.15)]">
+                <div class="text-center">
+                    <div class="mb-2 mx-auto w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <span class="font-semibold text-gray-200">1. Scan Models</span>
+                    <p class="text-xs text-gray-500 mt-1">Read from HF Cache</p>
+                </div>
+            </button>
+
+            <button onclick="sendAction('verify')" class="group relative flex items-center justify-center p-6 rounded-xl bg-gray-900 border border-gray-800 hover:border-purple-500/50 transition-all hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]">
+                <div class="text-center">
+                    <div class="mb-2 mx-auto w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <span class="font-semibold text-gray-200">2. Verify Loop</span>
+                    <p class="text-xs text-gray-500 mt-1">Start Background Check</p>
+                </div>
+            </button>
+
+            <button onclick="sendAction('benchmark')" class="group relative flex items-center justify-center p-6 rounded-xl bg-gray-900 border border-gray-800 hover:border-green-500/50 transition-all hover:shadow-[0_0_20px_rgba(34,197,94,0.15)]">
+                <div class="text-center">
+                    <div class="mb-2 mx-auto w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-400 group-hover:scale-110 transition-transform">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                    <span class="font-semibold text-gray-200">3. Benchmark</span>
+                    <p class="text-xs text-gray-500 mt-1">Start TPS Test</p>
+                </div>
+            </button>
+        </div>
+
+        <!-- Progress Bar (Global) -->
+        <div id="progressContainer" class="mb-6 hidden">
+            <div class="flex justify-between mb-1">
+                <span class="text-sm font-medium text-cyan-400 animate-pulse">Processing...</span>
+                <span id="progressText" class="text-sm font-medium text-gray-400">0/0</span>
+            </div>
+            <div class="w-full bg-gray-900 rounded-full h-2.5">
+                <div id="progressBar" class="bg-cyan-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Filters / Status Bar -->
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-300">Model Registry <span id="streamStatus" class="ml-2 text-xs font-mono text-cyan-400 animate-pulse hidden">RECEIVING UPDATES...</span></h2>
+            <div class="text-sm space-x-4">
+                <span class="text-gray-500">Loadable: <span id="countLoadable" class="text-gray-300 font-bold">0</span></span>
+                <span class="text-gray-500">Benchmarked: <span id="countBench" class="text-gray-300 font-bold">0</span></span>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="glass rounded-xl overflow-hidden border border-gray-800">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-800/50 text-xs uppercase font-semibold text-gray-400">
+                        <tr>
+                            <th class="px-6 py-4">Model Name</th>
+                            <th class="px-6 py-4 text-center">Loadable</th>
+                            <th class="px-6 py-4 text-center">TPS</th>
+                            <th class="px-6 py-4 text-center">Status</th>
+                            <th class="px-6 py-4">Output Preview</th>
+                            <th class="px-6 py-4 text-right">Last Checked</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modelTableBody" class="divide-y divide-gray-800">
+                        <!-- Rows injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-gray-800 border border-gray-700 text-white px-6 py-4 rounded-lg shadow-2xl transform translate-y-24 transition-transform duration-300 flex items-center space-x-3 z-50">
+        <div class="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
+        <span id="toastMsg">Notification</span>
+    </div>
+
+    <script>
+        let ws;
+        let retryInterval = 1000;
+
+        function connect() {
+            const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${proto}://${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                document.getElementById('connStatus').className = 'h-3 w-3 bg-green-500 rounded-full animate-pulse';
+                document.getElementById('connText').innerText = 'CONNECTED';
+                document.getElementById('connText').className = 'text-xs font-mono text-green-400';
+                showToast('WebSocket Connected');
+                retryInterval = 1000;
+            };
+
+            ws.onclose = () => {
+                document.getElementById('connStatus').className = 'h-3 w-3 bg-red-500 rounded-full';
+                document.getElementById('connText').innerText = 'DISCONNECTED';
+                document.getElementById('connText').className = 'text-xs font-mono text-red-400';
+                setTimeout(connect, retryInterval);
+                retryInterval = Math.min(retryInterval * 2, 10000);
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'update') {
+                    renderTable(msg.data);
+                    document.getElementById('streamStatus').classList.remove('hidden');
+                    setTimeout(() => document.getElementById('streamStatus').classList.add('hidden'), 500);
+                }
+            };
+        }
+
+        function sendAction(action) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: action }));
+                showToast(`Sent command: ${action}`);
+            } else {
+                showToast('❌ Not connected');
+            }
+        }
+
+        // Progress State
+        let currentTask = null;
+        let completedCount = 0;
+        let totalTaskCount = 0;
+
+        function updateProgress() {
+            if (totalTaskCount > 0) {
+                const percent = Math.round((completedCount / totalTaskCount) * 100);
+                document.getElementById('progressBar').style.width = `${percent}%`;
+                document.getElementById('progressText').innerText = `${completedCount} / ${totalTaskCount} (${percent}%)`;
+                
+                if (completedCount === totalTaskCount) {
+                    setTimeout(() => {
+                        document.getElementById('progressContainer').classList.add('hidden');
+                    }, 2000);
+                } else {
+                    document.getElementById('progressContainer').classList.remove('hidden');
+                }
+            }
+        }
+
+        function renderTable(models) {
+            const tbody = document.getElementById('modelTableBody');
+            tbody.innerHTML = '';
+            
+            const list = Object.values(models).sort((a,b) => a.name.localeCompare(b.name));
+            
+            document.getElementById('totalModels').innerText = list.length;
+            
+            const loadable = list.filter(m => m.loadable).length;
+            const benchmarked = list.filter(m => m.benchmarked).length;
+            const verified = list.filter(m => m.checked).length;
+            
+            document.getElementById('countLoadable').innerText = loadable;
+            document.getElementById('countBench').innerText = benchmarked;
+
+            // Simple progress heuristics
+            if (currentTask === 'verify') {
+                totalTaskCount = list.length;
+                completedCount = verified;
+                updateProgress();
+            } else if (currentTask === 'benchmark') {
+                totalTaskCount = loadable; // We only benchmark loadable ones
+                completedCount = benchmarked;
+                updateProgress();
+            }
+
+            list.forEach(m => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-800/30 transition-colors group border-b border-gray-800/50 last:border-0';
+                
+                // Status Icons
+                let loadStatus = '<span class="text-gray-600">-</span>';
+                if (m.checked) {
+                    loadStatus = m.loadable 
+                        ? '<span class="text-green-400 font-bold text-lg">✓</span>' 
+                        : '<span class="text-red-500 font-bold text-lg">✕</span>';
+                }
+
+                // Bench Badge (Safe Check)
+                let tpsBadge = '<span class="text-gray-600 text-xs">-</span>';
+                if (m.benchmarked && m.tps !== undefined && m.tps !== null) {
+                    tpsBadge = `<span class="bg-cyan-500/10 text-cyan-400 px-2 py-1 rounded text-xs font-mono font-bold">${m.tps.toFixed(2)}</span>`;
+                }
+
+                // Error / checked status text
+                let statusText = '<span class="text-xs text-gray-600 font-mono">NEW</span>';
+                if (m.error) statusText = `<span class="text-xs text-red-400 truncate w-32 block" title="${m.error}">ERROR</span>`;
+                else if (m.benchmarked) statusText = '<span class="text-xs text-green-400 font-medium">COMPLETE</span>';
+                else if (m.checked) statusText = '<span class="text-xs text-purple-400">CHECKED</span>';
+
+                // Truncate output
+                let output = m.example_output || '';
+                
+                // Time
+                let timeStr = '-';
+                if (m.last_checked) {
+                    const d = new Date(m.last_checked);
+                    timeStr = d.toLocaleTimeString();
+                }
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-medium text-white">${m.name}</div>
+                        ${m.hidden_size ? `<div class="text-xs text-gray-500">H: ${m.hidden_size} | V: ${m.vocab_size}</div>` : ''}
+                    </td>
+                    <td class="px-6 py-4 text-center">${loadStatus}</td>
+                    <td class="px-6 py-4 text-center">${tpsBadge}</td>
+                    <td class="px-6 py-4 text-center">${statusText}</td>
+                    <td class="px-6 py-4">
+                        <div class="text-xs text-gray-400 font-mono bg-black/30 p-2 rounded max-w-xs truncate group-hover:whitespace-normal group-hover:absolute group-hover:z-10 group-hover:bg-gray-900 group-hover:border group-hover:border-gray-700 group-hover:shadow-xl transition-all" title="${output}">
+                            ${output || '<span class="opacity-30">Waiting...</span>'}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-right text-xs text-gray-600 font-mono">${timeStr}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function sendAction(action) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                currentTask = action; // Set task state for progress bar
+                ws.send(JSON.stringify({ action: action }));
+                showToast(`Started: ${action}`);
+                document.getElementById('progressContainer').classList.remove('hidden');
+            } else {
+                showToast('❌ Not connected');
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            toast.classList.remove('translate-y-24');
+            setTimeout(() => toast.classList.add('translate-y-24'), 3000);
+        }
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>
