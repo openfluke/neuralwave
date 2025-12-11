@@ -62,6 +62,8 @@
                 <div class="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
                     <button onclick="showTab('dashboard')" id="tab-dashboard" class="px-4 py-2 rounded-md text-sm font-medium transition-all bg-gray-800 text-cyan-400 shadow">Dashboard</button>
                     <button onclick="showTab('analysis')" id="tab-analysis" class="px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">Analysis</button>
+                    <button onclick="showTab('compare')" id="tab-compare" class="px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">Compare</button>
+                    <button onclick="showTab('visualize')" id="tab-visualize" class="px-4 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">Visualize 3D</button>
                 </div>
 
                 <div class="flex items-center space-x-2 border-l border-gray-800 pl-6">
@@ -180,6 +182,100 @@
                 </div>
             </div>
         </div>
+
+        <!-- VIEW: COMPARE -->
+        <div id="view-compare" class="animate-fade-in hidden h-[calc(100vh-140px)] flex flex-col">
+             <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-white">Model Comparison</h2>
+                    <p class="text-gray-400 text-sm">Compare weights and biases across selected models.</p>
+                </div>
+                <div class="text-sm text-gray-500">
+                    Comparing <span id="compareCount" class="text-cyan-400 font-bold">0</span> models
+                </div>
+            </div>
+
+            <div class="flex-1 flex overflow-hidden gap-6">
+                <!-- Sidebar: Layers -->
+                <div class="w-1/3 glass rounded-xl border border-gray-700 flex flex-col">
+                    <div class="p-4 border-b border-gray-700 bg-gray-900/50 space-y-3">
+                        <button onclick="sendAction('compare')" class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-semibold shadow-lg shadow-purple-500/20 transition-all text-sm flex items-center justify-center space-x-2">
+                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            <span>Run Comparison</span>
+                        </button>
+                        <input type="text" id="layerSearch" placeholder="Search layers..." onkeyup="filterCompareLayers()" class="w-full bg-gray-800 border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none">
+                    </div>
+                    <div id="compareLayerList" class="flex-1 overflow-y-auto p-2 space-y-1 no-scrollbar">
+                        <div class="text-gray-500 text-center py-10 text-sm">
+                            1. Select models in Dashboard<br>
+                            2. Click "Run Comparison"<br>
+                            3. Select a layer here
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main: Stats -->
+                <div class="w-2/3 glass rounded-xl border border-gray-700 p-6 overflow-y-auto">
+                    <div id="compareStatsEmpty" class="h-full flex flex-col items-center justify-center text-gray-500">
+                        <svg class="w-12 h-12 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
+                        <span>Select a layer on the left to compare stats</span>
+                    </div>
+                    <div id="compareStatsContent" class="hidden">
+                        <h3 id="compareLayerTitle" class="text-xl font-bold text-white mb-6 font-mono break-all"></h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="text-xs uppercase text-gray-500 border-b border-gray-700">
+                                    <tr>
+                                        <th class="pb-3 pl-2">Model</th>
+                                        <th class="pb-3 text-right">Mean</th>
+                                        <th class="pb-3 text-right">StdDev</th>
+                                        <th class="pb-3 text-right">Min</th>
+                                        <th class="pb-3 text-right pr-2">Max</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="compareStatsBody" class="divide-y divide-gray-800">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: VISUALIZE (Three.js) -->
+        <div id="view-visualize" class="animate-fade-in hidden h-[calc(100vh-140px)] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                     <h2 class="text-2xl font-bold text-white">3D Visualization</h2>
+                     <p class="text-gray-400 text-sm">Visualize model architecture as specific blocks.</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2 bg-gray-900 rounded-lg p-1 border border-gray-700">
+                        <select id="viz-model-select" onchange="onVizModelChange()" class="bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded outline-none border-none min-w-[180px]">
+                            <option value="">Select Model...</option>
+                        </select>
+                        <select id="viz-layer-select" onchange="onVizLayerChange()" class="bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded outline-none border-none min-w-[200px]">
+                            <option value="">All Layers</option>
+                        </select>
+                        <button onclick="startVizGeneration()" class="px-3 py-1 text-xs rounded font-bold bg-cyan-600 text-white hover:bg-cyan-500 transition-all">
+                            Generate
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="three-container" class="flex-1 rounded-xl glass overflow-hidden relative border border-gray-700">
+                <div id="viz-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90 z-10 hidden">
+                    <div class="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <span id="viz-loading-text" class="text-cyan-400 font-mono text-lg animate-pulse">Initializing...</span>
+                    <div class="w-64 bg-gray-800 rounded-full h-1 mt-4">
+                        <div id="viz-progress-bar" class="bg-cyan-500 h-1 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+                <!-- Canvas injected here -->
+            </div>
+        </div>
+
+
     </div>
 
     <!-- Notification Toast -->
@@ -188,10 +284,16 @@
         <span id="toastMsg">Notification</span>
     </div>
 
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
     <script>
         let ws;
         let retryInterval = 1000;
         let globalModels = {};
+        
+        // --- Three.js Globals Moved Below ---
 
         function connect() {
             const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -218,7 +320,15 @@
                 if (msg.type === 'update') {
                     globalModels = msg.data;
                     renderTable(msg.data);
+                    updateVizSelector(msg.data);
                     renderAnalysis(msg.data);
+                    // Update compare view if active
+                    if (!document.getElementById('view-compare').classList.contains('hidden')) {
+                        renderCompareView();
+                    }
+                    if (!document.getElementById('view-visualize').classList.contains('hidden')) {
+                         // update3DScene(); // Manual only
+                    }
                     document.getElementById('streamStatus').classList.remove('hidden');
                     setTimeout(() => document.getElementById('streamStatus').classList.add('hidden'), 500);
                 }
@@ -228,6 +338,7 @@
         function sendAction(action, payload) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 if (action === 'analyze') currentTask = 'analyze';
+                else if (action === 'compare') currentTask = 'compare';
                 else if (action === 'verify') currentTask = 'verify';
                 else if (action === 'benchmark') currentTask = 'benchmark';
                 
@@ -248,18 +359,23 @@
 
         // --- Tabs ---
         function showTab(tab) {
-            document.getElementById('view-dashboard').classList.add('hidden');
-            document.getElementById('view-analysis').classList.add('hidden');
-            document.getElementById('tab-dashboard').classList.remove('bg-gray-800', 'text-cyan-400', 'shadow');
-            document.getElementById('tab-dashboard').classList.add('text-gray-400');
-            document.getElementById('tab-analysis').classList.remove('bg-gray-800', 'text-cyan-400', 'shadow');
-            document.getElementById('tab-analysis').classList.add('text-gray-400');
+            ['dashboard', 'analysis', 'compare', 'visualize'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).classList.remove('bg-gray-800', 'text-cyan-400', 'shadow');
+                document.getElementById(`tab-${t}`).classList.add('text-gray-400');
+            });
 
             document.getElementById(`view-${tab}`).classList.remove('hidden');
             document.getElementById(`tab-${tab}`).classList.add('bg-gray-800', 'text-cyan-400', 'shadow');
             document.getElementById(`tab-${tab}`).classList.remove('text-gray-400');
+            
+            if (tab === 'compare') renderCompareView();
+            if (tab === 'visualize') {
+                initThreeJS();
+                // update3DScene(); // Manual trigger only
+            }
         }
-
+        
         // --- Progress ---
         let currentTask = null;
         let completedCount = 0;
@@ -281,7 +397,1234 @@
             }
         }
 
+        // --- Visualization Mode Toggle ---
+        function setVizMode(mode) {
+            vizMode = mode;
+            ['real', 'blank', 'overlap', 'diff'].forEach(m => {
+                const el = document.getElementById(`viz-mode-${m}`);
+                 if (m === mode) {
+                    el.classList.remove('text-gray-400', 'hover:text-white');
+                    el.classList.add('bg-cyan-600', 'text-white');
+                 } else {
+                    el.classList.add('text-gray-400', 'hover:text-white');
+                    el.classList.remove('bg-cyan-600', 'text-white');
+                 }
+            });
+            // If scene is active, regenerate to reflect mode change
+            if(scene && scene.children.length > 0) {
+                 startVizGeneration();
+            }
+        }
+        
+        // --- PRNG for Deterministic Rendering ---
+        let seedState = 1;
+        function seed(s) {
+            // Simple hash string to int
+            seedState = s.split('').reduce((a,b)=>a+b.charCodeAt(0), 0);
+        }
+        function random() {
+            const x = Math.sin(seedState++) * 10000;
+            return x - Math.floor(x);
+        }
+
+        // --- STATE ---
+        let currentVizModel = null;
+        let layerPositions = []; // Store layer Z positions for camera fly-to
+
+        function onVizModelChange() {
+            const select = document.getElementById('viz-model-select');
+            const modelName = select.value;
+            currentVizModel = globalModels[modelName] || null;
+            
+            const layerSelect = document.getElementById('viz-layer-select');
+            layerSelect.innerHTML = '<option value="">All Layers (Overview)</option>';
+            
+            if (currentVizModel && currentVizModel.analysis && currentVizModel.analysis.layers) {
+                currentVizModel.analysis.layers.forEach((l, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = idx;
+                    opt.innerText = `${idx+1}. ${l.type.split('.').pop()} (${(l.params/1000000).toFixed(2)}M)`;
+                    layerSelect.appendChild(opt);
+                });
+            }
+        }
+        
+        function onVizLayerChange() {
+            const select = document.getElementById('viz-layer-select');
+            const idx = select.value;
+            
+            if (idx === '' || !layerPositions[idx]) {
+                // Reset to overview position
+                flyTo(new THREE.Vector3(30, 30, 50), new THREE.Vector3(0, 0, 0));
+                return;
+            }
+            
+            const z = layerPositions[idx].z;
+            flyTo(new THREE.Vector3(10, 5, z + 20), new THREE.Vector3(0, 0, z));
+            
+            // Show layer details in panel
+            if (currentVizModel && currentVizModel.analysis) {
+                const l = currentVizModel.analysis.layers[idx];
+                showLayerDetails({
+                    layerName: l.name,
+                    layerType: l.type,
+                    params: l.params,
+                    modelName: currentVizModel.name,
+                    stats: { mean: l.mean, std: l.std_dev }
+                });
+            }
+        }
+        
+        function flyTo(targetPosition, targetLook) {
+            if (!camera || !controls) return;
+            
+            const startPos = camera.position.clone();
+            const startLook = controls.target.clone();
+            let t = 0;
+            
+            function animate() {
+                t += 0.03;
+                if (t >= 1) t = 1;
+                
+                const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // Ease in-out
+                
+                camera.position.lerpVectors(startPos, targetPosition, ease);
+                controls.target.lerpVectors(startLook, targetLook, ease);
+                controls.update();
+                
+                if (t < 1) requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        async function startVizGeneration() {
+            if (!scene) initThreeJS();
+            
+            const modelSelect = document.getElementById('viz-model-select');
+            const modelName = modelSelect.value;
+            
+            const loader = document.getElementById('viz-loading');
+            const progress = document.getElementById('viz-progress-bar');
+            const text = document.getElementById('viz-loading-text');
+            
+            if(!modelName) {
+                 showToast("Please select a model first!");
+                 return;
+            }
+            
+            const m = globalModels[modelName];
+            if (!m || !m.analysis) {
+                 showToast("Model analysis data missing. Please run Analyze first.");
+                 return;
+            }
+            
+            currentVizModel = m;
+
+            loader.classList.remove('hidden');
+            progress.style.width = '0%';
+            text.innerText = 'Building Neural Architecture...';
+            
+            await new Promise(r => requestAnimationFrame(r));
+            
+            // Clear scene
+            const toRemove = [];
+            scene.traverse((child) => {
+                if ((child.isMesh || child.isPoints || child.isLine || child.isSprite) && child.name !== 'helper') toRemove.push(child);
+            });
+            toRemove.forEach(c => { scene.remove(c); if(c.geometry) c.geometry.dispose(); });
+            interactableObjects = [];
+            layerPositions = [];
+
+            const analysis = m.analysis;
+            const group = new THREE.Group();
+            const totalLayers = analysis.layers.length;
+            let processed = 0;
+            
+            // Model Title Label
+            group.add(createLabel(m.name, new THREE.Vector3(0, 18, 0), 1.5));
+            
+            for (let i = 0; i < totalLayers; i++) {
+                const l = analysis.layers[i];
+
+                // Progress
+                const pct = Math.round((processed / totalLayers) * 100);
+                progress.style.width = `${pct}%`;
+                text.innerText = `Layer ${i+1}/${totalLayers}: ${l.name.substring(0, 40)}...`;
+                if (i % 3 === 0) await new Promise(r => setTimeout(r, 5)); // Yield
+                
+                const z = i * 12 - (totalLayers * 6); // Spread
+                layerPositions[i] = { z: z };
+                
+                // Color by type
+                let colorHex = 0x06b6d4; 
+                if (l.type.toLowerCase().includes("attn")) colorHex = 0xa855f7; 
+                if (l.type.toLowerCase().includes("mlp")) colorHex = 0x22c55e;
+                if (l.type.toLowerCase().includes("norm")) colorHex = 0xf97316;
+                if (l.type.toLowerCase().includes("embed")) colorHex = 0x3b82f6;
+
+                // Render Layer
+                seed(l.name + "viz");
+                renderDetailedLayer(group, l, z, colorHex, m.name, i);
+                
+                processed++;
+            }
+            
+            scene.add(group);
+            
+            // Reset Camera
+            flyTo(new THREE.Vector3(30, 30, 50), new THREE.Vector3(0, 0, 0));
+            
+            progress.style.width = '100%';
+            text.innerText = 'Done! Click layers or use dropdown to inspect.';
+            setTimeout(() => loader.classList.add('hidden'), 500);
+        }
+        
+        function renderDetailedLayer(group, l, z, color, mName, layerIndex) {
+             // Dimensions based on params
+             const baseH = 10;
+             const baseW = 8;
+             const paramScale = Math.log10(Math.max(l.params, 100)) / 6; // 0.3 to 1.2 ish
+             const h = baseH * paramScale;
+             const w = baseW * paramScale;
+             const neuronCount = Math.min(Math.max(50, Math.floor(l.params / 50000)), 500); // 50 to 500 neurons
+             const connectionCount = Math.min(neuronCount * 20, 3000); // Up to 3000 lines
+             
+             // 1. Neurons as Points
+             const nodeGeo = new THREE.BufferGeometry();
+             const nodePos = [];
+             const nodeColors = [];
+             const baseColor = new THREE.Color(color);
+             
+             for(let i=0; i<neuronCount; i++) {
+                 const x = (random() - 0.5) * w;
+                 const y = (random() - 0.5) * h;
+                 const zOffset = (random() - 0.5) * 4;
+                 
+                 nodePos.push(x, y, z + zOffset);
+                 
+                 // Value-based color intensity (simulated from std_dev)
+                 const val = Math.abs(gaussianRandom(l.mean || 0, l.std_dev || 0.1));
+                 const brightness = Math.min(0.5 + val * 5, 1.5);
+                 const c = baseColor.clone().multiplyScalar(brightness);
+                 nodeColors.push(c.r, c.g, c.b);
+             }
+             
+             nodeGeo.setAttribute('position', new THREE.Float32BufferAttribute(nodePos, 3));
+             nodeGeo.setAttribute('color', new THREE.Float32BufferAttribute(nodeColors, 3));
+             
+             const nodeMat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, opacity: 0.95 });
+             const nodes = new THREE.Points(nodeGeo, nodeMat);
+             group.add(nodes);
+             
+             // 2. Internal Connections (The Sparse Web)
+             const lineGeo = new THREE.BufferGeometry();
+             const linePos = [];
+             const lineCols = [];
+             
+             for(let i=0; i<connectionCount; i++) {
+                 const inIdx = Math.floor(random() * neuronCount);
+                 const outIdx = Math.floor(random() * neuronCount);
+                 if (inIdx === outIdx) continue;
+                 
+                 linePos.push(
+                     nodePos[inIdx*3], nodePos[inIdx*3+1], nodePos[inIdx*3+2],
+                     nodePos[outIdx*3], nodePos[outIdx*3+1], nodePos[outIdx*3+2]
+                 );
+                 
+                 // Opacity represents "weight strength" (simulated)
+                 const strength = Math.pow(random(), 2);
+                 lineCols.push(baseColor.r * strength, baseColor.g * strength, baseColor.b * strength);
+                 lineCols.push(baseColor.r * strength, baseColor.g * strength, baseColor.b * strength);
+             }
+             lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+             lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCols, 3));
+             
+             const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending });
+             const lines = new THREE.LineSegments(lineGeo, lineMat);
+             group.add(lines);
+             
+             // 3. Label
+             const shortType = l.type.split('.').pop().substring(0, 15);
+             group.add(createLabel(shortType, new THREE.Vector3(0, h/2 + 1.5, z), 0.6));
+             
+             // 4. HitBox for Click
+             const hitBox = new THREE.Mesh(new THREE.BoxGeometry(w+2, h+2, 5), new THREE.MeshBasicMaterial({ visible: false }));
+             hitBox.position.set(0, 0, z);
+             hitBox.userData = { 
+                 layerName: l.name, 
+                 layerType: l.type, 
+                 params: l.params, 
+                 modelName: mName, 
+                 layerIndex: layerIndex,
+                 stats: { mean: l.mean, std: l.std_dev } 
+             };
+             interactableObjects.push(hitBox);
+             group.add(hitBox);
+        }
+        
+        function gaussianRandom(mean, std) {
+            // Box-Muller transform for simulated values
+            const u1 = Math.random();
+            const u2 = Math.random();
+            const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+            return mean + z * std;
+        }
+        
+        // --- Hyper-Renderers ---
+
+        function renderHyperMLP(group, l, z, color, mName, isBlank) {
+             const h = 10;
+             const w = 6;
+             const count = 100; // Dense count
+             
+             // Input Neurons
+             const inputGeo = new THREE.BufferGeometry();
+             const inputPos = [];
+             for(let i=0; i<count; i++) {
+                 inputPos.push((random()-0.5)*w, (random()-0.5)*h, -2); // SEEDED
+             }
+             inputGeo.setAttribute('position', new THREE.Float32BufferAttribute(inputPos, 3));
+             const inputPoints = new THREE.Points(inputGeo, new THREE.PointsMaterial({color: isBlank ? 0x888888 : 0xffffff, size: 0.15}));
+             inputPoints.position.set(0, 0, z);
+             
+             // Output Neurons
+             const outputGeo = new THREE.BufferGeometry();
+             const outputPos = [];
+             for(let i=0; i<count; i++) {
+                 outputPos.push((random()-0.5)*w, (random()-0.5)*h, 2); // SEEDED
+             }
+             outputGeo.setAttribute('position', new THREE.Float32BufferAttribute(outputPos, 3));
+             const outputPoints = new THREE.Points(outputGeo, new THREE.PointsMaterial({color: color, size: 0.2}));
+             outputPoints.position.set(0, 0, z);
+             
+             // Connections (Hyper Dense)
+             // We draw lines from inputs to outputs
+             const lineGeo = new THREE.BufferGeometry();
+             const linePos = [];
+             const lineColors = [];
+             const colorObj = new THREE.Color(color);
+             const whiteObj = new THREE.Color(0xffffff);
+
+             // Draw 2000 lines
+             for(let i=0; i<2000; i++) {
+                 const startIdx = Math.floor(random() * count) * 3; 
+                 const endIdx = Math.floor(random() * count) * 3;
+                 
+                 // Sim Weight Strength for "Real" check
+                 const weightVal = isBlank ? (random() * 0.1) : (random() * Math.abs(l.mean) * 100); 
+                 
+                 linePos.push(
+                     inputPos[startIdx], inputPos[startIdx+1], -2 + z,
+                     outputPos[endIdx], outputPos[endIdx+1], 2 + z
+                 );
+             }
+             lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+             
+             const op = isBlank ? 0.05 : 0.15;
+             const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: color, opacity: op, transparent: true }));
+             
+             // HitBox
+             const hitBox = new THREE.Mesh(new THREE.BoxGeometry(w+2, h+2, 5), new THREE.MeshBasicMaterial({ visible: false }));
+             hitBox.position.set(0, 0, z);
+             hitBox.userData = { layerName: l.name, layerType: isBlank ? "Uninitialized" : l.type, params: l.params, modelName: mName, stats: { mean: l.mean, std: l.std_dev } };
+             interactableObjects.push(hitBox);
+             group.add(hitBox);
+
+             group.add(inputPoints);
+             group.add(outputPoints);
+             group.add(lines);
+             if(!isBlank) group.add(createLabel(l.type.split('.').pop(), new THREE.Vector3(0, h/2 + 2, z)));
+        }
+
+        function renderHyperAttention(group, l, z, color, mName, isBlank) {
+             const numHeads = 12;
+             const radius = 4;
+             
+             const attGroup = new THREE.Group();
+             attGroup.position.set(0, 0, z);
+             
+             // Context center
+             const centerMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(1, 16, 16),
+                new THREE.MeshStandardMaterial({ color: isBlank ? 0x888888 : 0xffffff, transparent: true, opacity: 0.5 })
+             );
+             attGroup.add(centerMesh);
+
+             for(let i=0; i<numHeads; i++) {
+                const angle = (i / numHeads) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                
+                const geo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const mat = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: isBlank ? 0.4 : 1 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(x, y, 0);
+                attGroup.add(mesh);
+                
+                // Dense Context Lines to Center
+                const lineGeo = new THREE.BufferGeometry();
+                const pos = [];
+                for(let k=0; k<20; k++) { // 20 lines per head
+                    pos.push(
+                        x + (random()-0.5), y + (random()-0.5), 0,
+                        (random()-0.5), (random()-0.5), 0
+                    );
+                }
+                lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: isBlank ? 0x555555 : 0xffffff, opacity: isBlank ? 0.05 : 0.2, transparent: true }));
+                attGroup.add(lines);
+            }
+             
+            // HitBox
+             const hitBox = new THREE.Mesh(new THREE.BoxGeometry(8, 8, 2), new THREE.MeshBasicMaterial({ visible: false }));
+             hitBox.position.set(0, 0, z);
+             hitBox.userData = { layerName: l.name, layerType: l.type, params: l.params, modelName: mName, stats: { mean: l.mean, std: l.std_dev } };
+             interactableObjects.push(hitBox);
+             group.add(hitBox);
+
+            group.add(attGroup);
+            if(!isBlank) group.add(createLabel("Attn", new THREE.Vector3(0, 6, z)));
+        }
+
+        function renderHyperGeneric(group, l, z, color, mName, isBlank) {
+             renderGenericLayer(group, l, z, color, mName, isBlank);
+        }
+        
+        // --- Render Helpers ---
+        // (Helpers updated to use random() instead of Math.random())
+
+        function createLabel(text, position, size = 1) {
+            // ... (keep existing)
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            context.fillStyle = 'rgba(0,0,0,0)'; 
+            context.fillRect(0, 0, 256, 64);
+            context.font = 'bold 24px monospace';
+            context.fillStyle = 'rgba(255,255,255,0.8)';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, 128, 32);
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(4 * size, 1 * size, 1);
+            sprite.position.copy(position);
+            return sprite;
+        }
+
+        function renderGenericLayer(group, l, z, color, mName, isGhost=false) {
+            const params = Math.max(100, l.params || 1000); 
+            const h = Math.max(1, Math.log10(params));
+            
+            const pointsMat = new THREE.PointsMaterial({ 
+                color: color, 
+                size: isGhost ? 0.1 : 0.15, 
+                transparent: true, 
+                opacity: isGhost ? 0.3 : 0.8 
+            });
+            const pointsGeo = new THREE.BufferGeometry();
+            
+            const count = Math.min(1000, Math.floor(params / 10000));
+            const positions = new Float32Array(count * 3);
+            
+            for(let i=0; i<count; i++) {
+                positions[i*3] = (random() - 0.5) * 4; // SEEDED
+                positions[i*3+1] = (random() - 0.5) * h;
+                positions[i*3+2] = (random() - 0.5) * 1; 
+            }
+            pointsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const points = new THREE.Points(pointsGeo, pointsMat);
+            points.position.set(0, h/2, z);
+            
+            // Interaction Data
+            points.userData = { layerName: l.name, layerType: l.type, params: params, modelName: mName, stats: { mean: l.mean, std: l.std_dev, min: l.min, max: l.max } };
+            
+            if(!isGhost) {
+                const hitGeo = new THREE.BoxGeometry(4, h, 1);
+                const hitBox = new THREE.Mesh(hitGeo, new THREE.MeshBasicMaterial({ visible: false }));
+                hitBox.position.copy(points.position);
+                hitBox.userData = points.userData;
+                group.add(hitBox);
+                interactableObjects.push(hitBox);
+                group.add(createLabel(l.type, new THREE.Vector3(0, h + 1, z)));
+            }
+             
+            group.add(points);
+        }
+
+        function renderMLPLayer(group, l, z, color, mName, isGhost=false) {
+             const h = 4;
+             const w = 3;
+             const count = 50; 
+             
+             // Input Wall
+             const inputGeo = new THREE.BufferGeometry();
+             const inputPos = [];
+             for(let i=0; i<count; i++) {
+                 inputPos.push((random()-0.5)*w, (random()-0.5)*h, -0.5); // SEEDED
+             }
+             inputGeo.setAttribute('position', new THREE.Float32BufferAttribute(inputPos, 3));
+             const inputPoints = new THREE.Points(inputGeo, new THREE.PointsMaterial({color: isGhost ? 0x555555 : 0xffffff, size: 0.1, transparent: true, opacity: isGhost ? 0.3 : 1}));
+             inputPoints.position.set(0, h/2, z);
+             
+             // Output Wall
+             const outputGeo = new THREE.BufferGeometry();
+             const outputPos = [];
+             for(let i=0; i<count; i++) {
+                 outputPos.push((random()-0.5)*w, (random()-0.5)*h, 0.5); // SEEDED
+             }
+             outputGeo.setAttribute('position', new THREE.Float32BufferAttribute(outputPos, 3));
+             const outputPoints = new THREE.Points(outputGeo, new THREE.PointsMaterial({color: color, size: 0.15, transparent: true, opacity: isGhost ? 0.3 : 1}));
+             outputPoints.position.set(0, h/2, z);
+             
+             // Connections
+             const lineGeo = new THREE.BufferGeometry();
+             const linePos = [];
+             for(let i=0; i<100; i++) {
+                 const startIdx = Math.floor(random() * count) * 3; // SEEDED
+                 const endIdx = Math.floor(random() * count) * 3;
+                 
+                 linePos.push(
+                     inputPos[startIdx], inputPos[startIdx+1] + h/2, -0.5 + z,
+                     outputPos[endIdx], outputPos[endIdx+1] + h/2, 0.5 + z
+                 );
+             }
+             lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+             const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: color, opacity: isGhost ? 0.05 : 0.2, transparent: true }));
+             
+             if(!isGhost) {
+                 const hitBox = new THREE.Mesh(new THREE.BoxGeometry(w, h, 2), new THREE.MeshBasicMaterial({ visible: false }));
+                 hitBox.position.set(0, h/2, z);
+                 hitBox.userData = { layerName: l.name, layerType: l.type, params: l.params, modelName: mName, stats: { mean: l.mean, std: l.std_dev, min: l.min, max: l.max } };
+                 group.add(hitBox);
+                 interactableObjects.push(hitBox);
+                 if (l.std_dev) {
+                     group.add(createLabel(`σ=${l.std_dev.toFixed(4)}`, new THREE.Vector3(0, h + 1, z), 0.8));
+                 }
+             }
+
+             group.add(inputPoints);
+             group.add(outputPoints);
+             group.add(lines);
+        }
+
+        function renderAttentionLayer(group, l, z, color, mName, isGhost=false) {
+            const numHeads = 8;
+            const radius = 2;
+            const headSize = 0.4;
+            
+            const attGroup = new THREE.Group();
+            attGroup.position.set(0, 3, z);
+            
+            for(let i=0; i<numHeads; i++) {
+                const angle = (i / numHeads) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                
+                const geo = new THREE.BoxGeometry(headSize, headSize, headSize);
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: color, 
+                    transparent: true, 
+                    opacity: isGhost ? 0.3 : 1,
+                    wireframe: isGhost
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(x, y, 0);
+                attGroup.add(mesh);
+                
+                const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(x, y, 0),
+                    new THREE.Vector3(0, 0, 0)
+                ]);
+                const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: isGhost ? 0x555555 : 0xffffff, opacity: isGhost ? 0.1 : 0.3, transparent: true }));
+                attGroup.add(line);
+            }
+            
+            const centerMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshStandardMaterial({ color: isGhost ? 0x555555 : 0xffffff, wireframe: true, transparent: true, opacity: isGhost ? 0.3 : 1 })
+            );
+            attGroup.add(centerMesh);
+            
+            if(!isGhost) {
+                const hitBox = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 1), new THREE.MeshBasicMaterial({ visible: false }));
+                hitBox.position.set(0, 3, z);
+                hitBox.userData = { layerName: l.name, layerType: l.type, params: l.params, modelName: mName, stats: { mean: l.mean, std: l.std_dev, min: l.min, max: l.max } };
+                group.add(hitBox);
+                interactableObjects.push(hitBox);
+                group.add(createLabel("MHA", new THREE.Vector3(0, 5.5, z)));
+            }
+            
+            group.add(attGroup);
+        }
+
+        // --- Three.js Globals ---
+        let scene, camera, renderer, controls, raycaster, mouse;
+        let vizMode = 'real'; // real, blank, diff
+        let animationId;
+        let interactableObjects = []; // Store meshes/points for raycasting
+
+        // ... (connect function remains same)
+
+        // --- Three.js Logic ---
+        function initThreeJS() {
+            if (scene) return; // Already init
+            
+            const container = document.getElementById('three-container');
+            
+            // Raycaster setup
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827); 
+            // Fog removed
+
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.01, 1000); // Near plane 0.01 for macro
+            camera.position.set(20, 20, 40);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            
+            // Interaction
+            renderer.domElement.addEventListener('pointerdown', onDocumentMouseDown, false);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 0.1; // Allow extreme closeups
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 2); 
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+
+            // Grid
+            const gridHelper = new THREE.GridHelper(100, 100, 0x374151, 0x1f2937);
+            scene.add(gridHelper);
+
+            // Animate
+            const animate = function () {
+                animationId = requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            };
+            animate();
+
+            window.addEventListener('resize', () => {
+                if(container.offsetParent) { 
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                }
+            });
+        }
+
+        let isExpanded = false; // Track if we're viewing layer internals
+
+        function onDocumentMouseDown(event) {
+            // If in expanded view, ignore layer clicks (allow orbit)
+            if (isExpanded) return;
+            
+            event.preventDefault();
+            
+            const container = document.getElementById('three-container');
+            const rect = container.getBoundingClientRect();
+            
+            mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            
+            const intersects = raycaster.intersectObjects(interactableObjects);
+            
+            if (intersects.length > 0) {
+                // Focus on the first hit
+                const hit = intersects[0];
+                const userData = hit.object.userData;
+                if (userData && userData.layerName) {
+                     showLayerDetails(userData);
+                }
+            }
+        }
+
+        function update3DScene() {
+            if (!scene) return;
+            
+            // Clear existing
+            const toRemove = [];
+            scene.traverse((child) => {
+                if ((child.isMesh || child.isPoints) && child.name !== 'helper') toRemove.push(child);
+            });
+            toRemove.forEach(c => scene.remove(c));
+            interactableObjects = [];
+
+            const models = Object.values(globalModels).filter(m => m.selected && m.analysis);
+            if(models.length === 0) return;
+
+            let xOffset = -(models.length * 10) / 2; // Center the lineup
+            const spacing = 15;
+
+            models.forEach((m, idx) => {
+                const group = new THREE.Group();
+                const analysis = (vizMode === 'blank' && m.blank_analysis) ? m.blank_analysis : m.analysis;
+                const comparison = m.blank_analysis; 
+                
+                if (!analysis) return;
+
+                if (analysis.layers) {
+                    analysis.layers.forEach((l, i) => {
+                        // Height based on params
+                        const h = Math.log10(l.params) / 1.5; 
+                        const w = 4; // Width
+                        const d = 2; // Depth
+                        
+                        let colorHex = 0x06b6d4; 
+                        if (l.type.includes("attn")) colorHex = 0xa855f7; 
+                        if (l.type.includes("mlp")) colorHex = 0x22c55e;
+                        if (l.type.includes("norm")) colorHex = 0xf97316;
+                        
+                        if (vizMode === 'diff' && comparison && comparison.layers[i]) {
+                             const diff = Math.abs(l.std_dev - comparison.layers[i].std_dev);
+                             const intensity = Math.min(diff * 10, 1); 
+                             colorHex = new THREE.Color().setHSL(0.7 - (intensity * 0.7), 1, 0.5).getHex();
+                        }
+                        
+                        // Particle Cloud Logic
+                        // More particles for detailed "every connection" feel
+                        const particleCount = Math.max(100, Math.min(2000, l.params / 50000)); 
+                        const geometry = new THREE.BufferGeometry();
+                        const positions = new Float32Array(particleCount * 3);
+                        
+                        for(let p=0; p<particleCount; p++) {
+                            positions[p*3] = (Math.random() - 0.5) * w;
+                            positions[p*3+1] = (Math.random() - 0.5) * h;
+                            positions[p*3+2] = (Math.random() - 0.5) * d;
+                        }
+                        
+                        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                        
+                        const material = new THREE.PointsMaterial({ 
+                            color: colorHex,
+                            size: 0.15,
+                            transparent: true,
+                            opacity: 0.8
+                        });
+                        
+                        const points = new THREE.Points(geometry, material);
+                        points.position.y = h / 2;
+                        points.position.z = i * 4 - (analysis.layers.length * 2);
+                        
+                        // User Data for Click Interaction
+                        points.userData = { 
+                            layerName: l.name, 
+                            layerType: l.type, 
+                            params: l.params, 
+                            modelName: m.name,
+                            stats: { mean: l.mean, std: l.std_dev, min: l.min, max: l.max } 
+                        };
+                        
+                        // Add invisible HIT box because clicking points is hard
+                        const hitGeo = new THREE.BoxGeometry(w, h, d);
+                        const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+                        const hitBox = new THREE.Mesh(hitGeo, hitMat);
+                        hitBox.position.copy(points.position);
+                        hitBox.userData = points.userData; // Copy data
+                        
+                        group.add(points);
+                        group.add(hitBox);
+                        interactableObjects.push(hitBox);
+                    });
+                }
+                
+                group.position.x = xOffset;
+                scene.add(group);
+                
+                xOffset += spacing;
+            });
+        }
+        
+        let expandedLayerGroup = null; // Track the expanded view
+        
+        function showLayerDetails(data) {
+             console.log("Clicked Layer:", data);
+             
+             // Fly to layer
+             if (data.layerIndex !== undefined && layerPositions[data.layerIndex]) {
+                 const z = layerPositions[data.layerIndex].z;
+                 // Fly MUCH closer for detail view
+                 flyTo(new THREE.Vector3(0, 0, z + 15), new THREE.Vector3(0, 0, z));
+                 
+                 document.getElementById('viz-layer-select').value = data.layerIndex;
+             }
+             
+             // Render Expanded View
+             expandLayerView(data);
+             
+             // Update Panel (simpler stats only)
+             if (document.getElementById('viz-details-panel')) {
+                 updateVizPanel(data);
+             } else {
+                 createVizPanel(data);
+             }
+        }
+        
+        function expandLayerView(data) {
+            if (!scene || !currentVizModel) return;
+            
+            isExpanded = true; // Block layer clicks
+            
+            // Remove previous expanded view
+            if (expandedLayerGroup) {
+                scene.remove(expandedLayerGroup);
+                expandedLayerGroup = null;
+            }
+            
+            const l = currentVizModel.analysis.layers[data.layerIndex];
+            if (!l) return;
+            
+            expandedLayerGroup = new THREE.Group();
+            const z = layerPositions[data.layerIndex]?.z || 0;
+            expandedLayerGroup.position.set(0, 0, z);
+            
+            // Determine layer type for specific rendering
+            const type = l.type.toLowerCase();
+            
+            // --- DETAILED INTERNAL RENDERING ---
+            
+            // 1. NEURONS (Much Higher Density)
+            const neuronCount = Math.min(1000, Math.max(100, Math.floor(l.params / 10000)));
+            const neuronGeo = new THREE.BufferGeometry();
+            const neuronPos = [];
+            const neuronColors = [];
+            
+            // Determine color by type
+            let baseColor = new THREE.Color(0x06b6d4);
+            if (type.includes("attn")) baseColor = new THREE.Color(0xa855f7);
+            if (type.includes("mlp")) baseColor = new THREE.Color(0x22c55e);
+            if (type.includes("norm")) baseColor = new THREE.Color(0xf97316);
+            
+            // Spatial Layout based on type
+            let layoutW = 12, layoutH = 12, layoutD = 6;
+            
+            for (let i = 0; i < neuronCount; i++) {
+                const x = (Math.random() - 0.5) * layoutW;
+                const y = (Math.random() - 0.5) * layoutH;
+                const zOff = (Math.random() - 0.5) * layoutD;
+                
+                neuronPos.push(x, y, zOff);
+                
+                // Simulate activation value
+                const val = gaussianRandom(l.mean || 0, l.std_dev || 0.1);
+                const brightness = Math.min(Math.max(0.3, 0.5 + Math.abs(val) * 3), 1.5);
+                const c = baseColor.clone().multiplyScalar(brightness);
+                neuronColors.push(c.r, c.g, c.b);
+            }
+            
+            neuronGeo.setAttribute('position', new THREE.Float32BufferAttribute(neuronPos, 3));
+            neuronGeo.setAttribute('color', new THREE.Float32BufferAttribute(neuronColors, 3));
+            
+            const neuronMat = new THREE.PointsMaterial({ size: 0.25, vertexColors: true, transparent: true, opacity: 1 });
+            const neurons = new THREE.Points(neuronGeo, neuronMat);
+            expandedLayerGroup.add(neurons);
+            
+            // 2. CONNECTIONS (Dense Web)
+            const connectionCount = Math.min(5000, neuronCount * 10);
+            const lineGeo = new THREE.BufferGeometry();
+            const linePos = [];
+            const lineCols = [];
+            
+            for (let i = 0; i < connectionCount; i++) {
+                const inIdx = Math.floor(Math.random() * neuronCount);
+                const outIdx = Math.floor(Math.random() * neuronCount);
+                if (inIdx === outIdx) continue;
+                
+                linePos.push(
+                    neuronPos[inIdx * 3], neuronPos[inIdx * 3 + 1], neuronPos[inIdx * 3 + 2],
+                    neuronPos[outIdx * 3], neuronPos[outIdx * 3 + 1], neuronPos[outIdx * 3 + 2]
+                );
+                
+                // Simulated weight strength
+                const strength = Math.pow(Math.random(), 2);
+                lineCols.push(baseColor.r * strength, baseColor.g * strength, baseColor.b * strength);
+                lineCols.push(baseColor.r * strength, baseColor.g * strength, baseColor.b * strength);
+            }
+            
+            lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+            lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCols, 3));
+            
+            const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+            const lines = new THREE.LineSegments(lineGeo, lineMat);
+            expandedLayerGroup.add(lines);
+            
+            // 3. ATTENTION HEADS (If attention layer)
+            if (type.includes("attn")) {
+                const numHeads = 12;
+                const headRadius = 6;
+                
+                for (let h = 0; h < numHeads; h++) {
+                    const angle = (h / numHeads) * Math.PI * 2;
+                    const hx = Math.cos(angle) * headRadius;
+                    const hy = Math.sin(angle) * headRadius;
+                    
+                    // Head block
+                    const headGeo = new THREE.BoxGeometry(1, 1, 0.5);
+                    const headMat = new THREE.MeshStandardMaterial({ 
+                        color: 0xa855f7, 
+                        emissive: 0xa855f7, 
+                        emissiveIntensity: 0.3,
+                        transparent: true,
+                        opacity: 0.9
+                    });
+                    const head = new THREE.Mesh(headGeo, headMat);
+                    head.position.set(hx, hy, 0);
+                    expandedLayerGroup.add(head);
+                    
+                    // Head Label
+                    expandedLayerGroup.add(createLabel(`H${h+1}`, new THREE.Vector3(hx, hy + 1.2, 0), 0.4));
+                    
+                    // Attention lines to center
+                    const attLineGeo = new THREE.BufferGeometry();
+                    const attPos = [];
+                    for (let k = 0; k < 30; k++) {
+                        attPos.push(
+                            hx + (Math.random() - 0.5) * 0.5, hy + (Math.random() - 0.5) * 0.5, 0,
+                            (Math.random() - 0.5) * 1, (Math.random() - 0.5) * 1, 0
+                        );
+                    }
+                    attLineGeo.setAttribute('position', new THREE.Float32BufferAttribute(attPos, 3));
+                    const attLines = new THREE.LineSegments(attLineGeo, new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true }));
+                    expandedLayerGroup.add(attLines);
+                }
+                
+                // Central Context Sphere
+                const ctxGeo = new THREE.SphereGeometry(1.5, 32, 32);
+                const ctxMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.2, transparent: true, opacity: 0.7 });
+                const ctx = new THREE.Mesh(ctxGeo, ctxMat);
+                expandedLayerGroup.add(ctx);
+            }
+            
+            // 4. MLP STRUCTURE (If MLP layer)
+            if (type.includes("mlp")) {
+                // Input wall
+                const inputWallGeo = new THREE.PlaneGeometry(layoutW, layoutH);
+                const inputWallMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, side: THREE.DoubleSide, transparent: true, opacity: 0.1, wireframe: true });
+                const inputWall = new THREE.Mesh(inputWallGeo, inputWallMat);
+                inputWall.position.set(0, 0, -layoutD/2 - 1);
+                expandedLayerGroup.add(inputWall);
+                expandedLayerGroup.add(createLabel("Input", new THREE.Vector3(0, layoutH/2 + 1, -layoutD/2 - 1), 0.5));
+                
+                // Output wall
+                const outputWall = new THREE.Mesh(inputWallGeo, new THREE.MeshBasicMaterial({ color: 0x22c55e, side: THREE.DoubleSide, transparent: true, opacity: 0.1, wireframe: true }));
+                outputWall.position.set(0, 0, layoutD/2 + 1);
+                expandedLayerGroup.add(outputWall);
+                expandedLayerGroup.add(createLabel("Output", new THREE.Vector3(0, layoutH/2 + 1, layoutD/2 + 1), 0.5));
+            }
+            
+            // 5. BIAS VISUALIZATION (Small Dots at Bottom)
+            const biasGeo = new THREE.BufferGeometry();
+            const biasPos = [];
+            const biasCount = Math.min(50, neuronCount / 10);
+            for (let i = 0; i < biasCount; i++) {
+                biasPos.push((Math.random() - 0.5) * layoutW, -layoutH/2 - 1, (Math.random() - 0.5) * 2);
+            }
+            biasGeo.setAttribute('position', new THREE.Float32BufferAttribute(biasPos, 3));
+            const biasMat = new THREE.PointsMaterial({ color: 0xfbbf24, size: 0.3, transparent: true, opacity: 0.9 });
+            const biases = new THREE.Points(biasGeo, biasMat);
+            expandedLayerGroup.add(biases);
+            expandedLayerGroup.add(createLabel("Biases", new THREE.Vector3(0, -layoutH/2 - 2, 0), 0.4));
+            
+            // Add Title
+            expandedLayerGroup.add(createLabel(l.type.split('.').pop(), new THREE.Vector3(0, layoutH/2 + 3, 0), 1));
+            
+            scene.add(expandedLayerGroup);
+        }
+        
+        function createVizPanel(data) {
+            const panel = document.createElement('div');
+            panel.id = 'viz-details-panel';
+            panel.className = 'absolute top-20 right-5 w-72 glass p-4 rounded-xl border border-gray-700 animate-fade-in z-20';
+            document.getElementById('view-visualize').appendChild(panel);
+            
+            updateVizPanel(data);
+        }
+        
+        function updateVizPanel(data) {
+             const panel = document.getElementById('viz-details-panel');
+             panel.innerHTML = `
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-base font-bold text-white break-words w-48">${data.layerType.split('.').pop()}</h3>
+                    <button onclick="closeExpandedView()" class="text-gray-400 hover:text-white">✕</button>
+                </div>
+                <div class="space-y-1 text-xs font-mono">
+                    <div class="flex justify-between"><span class="text-gray-500">Full Name</span></div>
+                    <div class="text-cyan-400 text-xs truncate" title="${data.layerName}">${data.layerName}</div>
+                    <div class="h-px bg-gray-700 my-2"></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Params</span> <span class="text-white">${(data.params/1000000).toFixed(2)}M</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Mean</span> <span class="text-yellow-400">${typeof data.stats.mean === 'number' ? data.stats.mean.toExponential(3) : '-'}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">StdDev</span> <span class="text-purple-400">${typeof data.stats.std === 'number' ? data.stats.std.toFixed(5) : '-'}</span></div>
+                </div>
+                <div class="mt-3 pt-2 border-t border-gray-700 text-center">
+                    <span class="text-xs text-gray-500">Viewing Layer Internals</span>
+                </div>
+             `;
+        }
+        
+        function closeExpandedView() {
+            if (expandedLayerGroup) {
+                scene.remove(expandedLayerGroup);
+                expandedLayerGroup = null;
+            }
+            isExpanded = false; // Re-enable layer clicks
+            
+            const panel = document.getElementById('viz-details-panel');
+            if (panel) panel.remove();
+            
+            // Reset camera to overview
+            flyTo(new THREE.Vector3(30, 30, 50), new THREE.Vector3(0, 0, 0));
+        }
+        
+        function filterCompareLayersFromViz(name) {
+             // Switch to compare tab and layout selection
+             showTab('compare');
+             // Small delay to allow render
+             setTimeout(() => {
+                 document.getElementById('layerSearch').value = name;
+                 filterCompareLayers();
+                 showLayerCompare(name);
+             }, 100);
+        }
+
+        // --- PRE-PROCESSING: Generate Blank Analysis ---
+        function generateBlankAnalysis(realAnalysis) {
+             if (!realAnalysis) return null;
+             const blank = JSON.parse(JSON.stringify(realAnalysis)); // Deep copy
+             blank.layers.forEach(l => {
+                 // Randomize Params to simulate initialized state
+                 // Xavier/He initialization theory: mean=0, std=sqrt(2/fan_in) or similar.
+                 // We will verify this visually. 
+                 l.mean = (Math.random() - 0.5) * 0.001; 
+                 l.std_dev = 0.02 + (Math.random() * 0.01); // Typical Init StdDev
+                 l.min = -0.1;
+                 l.max = 0.1;
+             });
+             return blank;
+        }
+
         // --- Render Dashboard ---
+        function updateVizSelector(models) {
+             const select = document.getElementById('viz-model-select');
+             const current = select.value;
+             select.innerHTML = '<option value="">Select Model...</option>';
+             
+             Object.values(models)
+                 .filter(m => m.analysis)
+                 .sort((a,b) => a.name.localeCompare(b.name))
+                 .forEach(m => {
+                     // Ensure blank analysis exists locally if not from backend
+                     if (!m.blank_analysis) {
+                         m.blank_analysis = generateBlankAnalysis(m.analysis);
+                     }
+                 
+                     const opt = document.createElement('option');
+                     opt.value = m.name;
+                     opt.innerText = m.name;
+                     if(m.name === current) opt.selected = true;
+                     select.appendChild(opt);
+                 });
+        }
+        
+        // --- Hyper-Visualizers (Increased Density & Detail) ---
+
+        function renderHyperMLP(group, l, z, color, mName, isBlank) {
+             const h = 12;
+             const w = 8;
+             const neuronCount = 400; // MUCH higher density of neurons
+             const connectionCount = 5000; // 5000 lines per layer block
+             
+             // 1. Neuron Walls (Input & Output)
+             // Use Points for performance, but make them bright
+             const nodeGeo = new THREE.BufferGeometry();
+             const nodePos = [];
+             const nodeColors = [];
+             const baseColor = new THREE.Color(color);
+             const grayColor = new THREE.Color(0x888888);
+             
+             for(let i=0; i<neuronCount * 2; i++) {
+                 // Spatially organized to look like a matrix
+                 const x = (Math.random() - 0.5) * w;
+                 const y = (Math.random() - 0.5) * h;
+                 const isInput = i < neuronCount;
+                 const zOffset = isInput ? -3 : 3;
+                 
+                 nodePos.push(x, y, z + zOffset);
+                 
+                 // Sim Value
+                 const val = isBlank ? 0.01 : Math.random();
+                 const c = isBlank ? grayColor : baseColor.clone().multiplyScalar(0.5 + val);
+                 nodeColors.push(c.r, c.g, c.b);
+             }
+             
+             nodeGeo.setAttribute('position', new THREE.Float32BufferAttribute(nodePos, 3));
+             nodeGeo.setAttribute('color', new THREE.Float32BufferAttribute(nodeColors, 3));
+             
+             const nodeMat = new THREE.PointsMaterial({ size: 0.15, vertexColors: true, transparent: true, opacity: 0.9 });
+             const nodes = new THREE.Points(nodeGeo, nodeMat);
+             group.add(nodes);
+             
+             // 2. Dense Connections (The "Web")
+             const lineGeo = new THREE.BufferGeometry();
+             const linePos = [];
+             const lineCols = [];
+             
+             for(let i=0; i<connectionCount; i++) {
+                 // Pick random input and output
+                 const inIdx = Math.floor(Math.random() * neuronCount);
+                 const outIdx = Math.floor(Math.random() * neuronCount) + neuronCount;
+                 
+                 const ix = nodePos[inIdx*3];
+                 const iy = nodePos[inIdx*3+1];
+                 const iz = nodePos[inIdx*3+2];
+                 
+                 const ox = nodePos[outIdx*3];
+                 const oy = nodePos[outIdx*3+1];
+                 const oz = nodePos[outIdx*3+2];
+                 
+                 linePos.push(ix, iy, iz, ox, oy, oz);
+                 
+                 // Opacity/Brightness based on "Weight"
+                 // Real: High variance. Blank: Low variance.
+                 const weightStr = isBlank ? 0.05 : Math.pow(Math.random(), 3); // Power curve to show sparsity
+                 const c = isBlank ? grayColor : baseColor;
+                 lineCols.push(c.r*weightStr, c.g*weightStr, c.b*weightStr); // Vertex color fades black
+                 lineCols.push(c.r*weightStr, c.g*weightStr, c.b*weightStr); 
+             }
+             lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+             lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCols, 3));
+             
+             const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: isBlank ? 0.1 : 0.4, blending: THREE.AdditiveBlending });
+             const lines = new THREE.LineSegments(lineGeo, lineMat);
+             group.add(lines);
+             
+             // 3. Inter-Layer Connector (Forward Pass Simulation)
+             // Beam lines to next layer? (Visual only for now)
+             
+             // HitBox
+             const hitBox = new THREE.Mesh(new THREE.BoxGeometry(w+2, h+2, 8), new THREE.MeshBasicMaterial({ visible: false }));
+             hitBox.position.set(0, 0, z);
+             // Calculated detailed stats for tooltip
+             const simulatedParams = isBlank ? "Initialized (N(0, 0.02))" : `${(l.params/1000000).toFixed(2)}M`;
+             hitBox.userData = { 
+                 layerName: l.name, 
+                 layerType: l.type, 
+                 params: l.params, 
+                 modelName: mName, 
+                 stats: { 
+                     mean: isBlank ? "~0.00" : l.mean.toExponential(2), 
+                     std: isBlank ? "0.02" : l.std_dev.toFixed(4),
+                     notes: isBlank ? "Random weights" : "Trained Pattern"
+                 } 
+             };
+             interactableObjects.push(hitBox);
+             group.add(hitBox);
+
+             if(!isBlank) {
+                 const lbl = createLabel(l.type.includes('gate') ? "MLP Gate" : "MLP Proj", new THREE.Vector3(0, h/2+1, z), 0.8);
+                 group.add(lbl);
+             }
+        }
+
+        function renderHyperAttention(group, l, z, color, mName, isBlank) {
+             const numHeads = 12; // Visual representation
+             const radius = 5;
+             const attGroup = new THREE.Group();
+             attGroup.position.set(0, 0, z);
+             
+             // Attn Heads - Distinct Blocks
+             for(let i=0; i<numHeads; i++) {
+                const angle = (i / numHeads) * Math.PI * 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                
+                // Head Block
+                const headGeo = new THREE.BoxGeometry(0.8, 0.8, 1.5);
+                const headMat = new THREE.MeshStandardMaterial({ 
+                    color: isBlank ? 0x555555 : color, 
+                    emissive: isBlank ? 0x000000 : color,
+                    emissiveIntensity: 0.2,
+                    transparent: true,
+                    opacity: 0.9 
+                });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.set(x, y, 0);
+                attGroup.add(head);
+                
+                // Head Activity (Particles/Sparks)
+                if (!isBlank) {
+                    const sparkGeo = new THREE.BufferGeometry();
+                    const sparkPos = [];
+                    for(let k=0; k<10; k++) sparkPos.push((Math.random()-0.5), (Math.random()-0.5), (Math.random()-0.5));
+                    sparkGeo.setAttribute('position', new THREE.Float32BufferAttribute(sparkPos, 3));
+                    const sparks = new THREE.Points(sparkGeo, new THREE.PointsMaterial({color: 0xffffff, size: 0.05}));
+                    sparks.position.set(x,y,0);
+                    attGroup.add(sparks);
+                }
+
+                // Dense Context Connections (The "Attention Pattern")
+                const lineGeo = new THREE.BufferGeometry();
+                const pos = [];
+                const cols = [];
+                const c = new THREE.Color(color);
+                
+                for(let k=0; k<50; k++) { 
+                    // Lines converging to center "context"
+                    // Real: Focused/Sparse. Blank: Uniform/Messy.
+                    const targetX = (Math.random()-0.5) * (isBlank ? 4 : 1); // Real focuses tighter
+                    const targetY = (Math.random()-0.5) * (isBlank ? 4 : 1);
+                    
+                    pos.push(x, y, 0, targetX, targetY, 0); 
+                    
+                    const intent = isBlank ? 0.1 : Math.random();
+                    cols.push(c.r, c.g, c.b); // Start color
+                    cols.push(1, 1, 1); // End white (center)
+                }
+                lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+                const lines = new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ vertexColors: true, opacity: isBlank ? 0.1 : 0.3, transparent: true, blending: THREE.AdditiveBlending }));
+                attGroup.add(lines);
+            }
+             
+            // Central Context Node
+            const centerGeo = new THREE.SphereGeometry(1.5, 32, 32);
+            const centerMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, 
+                roughness: 0.2,
+                metalness: 0.8,
+                transparent: true, 
+                opacity: 0.6
+            });
+            const center = new THREE.Mesh(centerGeo, centerMat);
+            attGroup.add(center);
+
+            // HitBox
+             const hitBox = new THREE.Mesh(new THREE.BoxGeometry(12, 12, 2), new THREE.MeshBasicMaterial({ visible: false }));
+             hitBox.position.set(0, 0, z);
+             // Attn Stats
+             hitBox.userData = { layerName: l.name, layerType: "Self Attention", params: l.params, modelName: mName, stats: { mean: l.mean, std: l.std_dev, notes: isBlank ? "Uniform Attention" : "Learned Patterns" } };
+             interactableObjects.push(hitBox);
+             group.add(hitBox);
+
+            group.add(attGroup);
+            if(!isBlank) group.add(createLabel("Multi-Head Attn", new THREE.Vector3(0, 7, z), 0.8));
+        }
+
         function renderTable(models) {
             const tbody = document.getElementById('modelTableBody');
             tbody.innerHTML = '';
@@ -309,9 +1652,9 @@
                 totalTaskCount = loadable;
                 completedCount = benchmarked;
                 updateProgress();
-            } else if (currentTask === 'analyze') {
+            } else if (currentTask === 'analyze' || currentTask === 'compare') {
                 totalTaskCount = selected;
-                completedCount = analyzed; // Approximation
+                completedCount = analyzed;
                 updateProgress();
             }
 
@@ -379,13 +1722,12 @@
             });
         }
 
-        // --- Render Dashboard ---
+        // --- Render Analysis ---
         function renderAnalysis(models) {
             const container = document.getElementById('analysisGrid');
             const list = Object.values(models).filter(m => m.analysis).sort((a,b) => a.name.localeCompare(b.name));
 
             if (list.length === 0) {
-                // Keep default message if empty
                 return; 
             }
             container.innerHTML = '';
@@ -399,7 +1741,6 @@
                     typeCounts[l.type] = (typeCounts[l.type] || 0) + 1;
                 });
                 
-                // Create badgets
                 const badges = Object.entries(typeCounts).map(([k,v]) => 
                     `<span class="bg-gray-800 text-gray-400 text-xs px-2 py-1 rounded border border-gray-700">${k}: ${v}</span>`
                 ).join('');
@@ -407,7 +1748,6 @@
                 const card = document.createElement('div');
                 card.className = 'glass rounded-xl p-6 border border-gray-700';
                 
-                // Layers Table Rows
                 const rows = m.analysis.layers.map(l => {
                     const p = (l.params / 1_000_000).toFixed(2);
                     return `
@@ -445,6 +1785,76 @@
                     </div>
                 `;
                 container.appendChild(card);
+            });
+        }
+
+        // --- Render Compare ---
+        let selectedCompareLayer = null;
+
+        function renderCompareView() {
+            const list = Object.values(globalModels).filter(m => m.selected && m.analysis);
+            document.getElementById('compareCount').innerText = list.length;
+            
+            // Collect all unique layers
+            const layers = new Set();
+            list.forEach(m => {
+                if (m.analysis && m.analysis.layers) m.analysis.layers.forEach(l => layers.add(l.name));
+            });
+            
+            const sortedLayers = Array.from(layers).sort(); 
+            
+            const listContainer = document.getElementById('compareLayerList');
+            const currentSearch = document.getElementById('layerSearch').value.toLowerCase();
+            
+            listContainer.innerHTML = '';
+            
+            sortedLayers.forEach(name => {
+                if (currentSearch && !name.toLowerCase().includes(currentSearch)) return;
+
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left px-3 py-2 rounded text-xs font-mono transition-colors truncate ${selectedCompareLayer === name ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-500/30' : 'text-gray-400 hover:bg-gray-800'}`;
+                btn.innerText = name;
+                btn.onclick = () => showLayerCompare(name);
+                listContainer.appendChild(btn);
+            });
+            
+            if (selectedCompareLayer && sortedLayers.includes(selectedCompareLayer)) {
+                showLayerCompare(selectedCompareLayer);
+            } else if (sortedLayers.length > 0 && !selectedCompareLayer) {
+                // Optional: Auto select first
+                // selectedCompareLayer = sortedLayers[0];
+                // showLayerCompare(selectedCompareLayer);
+            }
+        }
+
+        function filterCompareLayers() {
+            renderCompareView();
+        }
+
+        function showLayerCompare(layerName) {
+            selectedCompareLayer = layerName;
+            document.getElementById('compareStatsEmpty').classList.add('hidden');
+            document.getElementById('compareStatsContent').classList.remove('hidden');
+            document.getElementById('compareLayerTitle').innerText = layerName;
+            
+            const tbody = document.getElementById('compareStatsBody');
+            tbody.innerHTML = '';
+            
+            const list = Object.values(globalModels).filter(m => m.selected && m.analysis);
+            
+            list.forEach(m => {
+                const layer = m.analysis.layers.find(l => l.name === layerName);
+                if (!layer) return; 
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="py-3 pl-2 text-sm font-medium text-white">${m.name}</td>
+                    <td class="py-3 text-right text-xs font-mono text-gray-300 font-bold">${layer.mean !== undefined ? layer.mean.toExponential(4) : '-'}</td>
+                    <td class="py-3 text-right text-xs font-mono text-cyan-400 font-bold">${layer.std_dev !== undefined ? layer.std_dev.toFixed(6) : '-'}</td>
+                    <td class="py-3 text-right text-xs font-mono text-gray-500">${layer.min !== undefined ? layer.min.toFixed(4) : '-'}</td>
+                    <td class="py-3 text-right pr-2 text-xs font-mono text-gray-500">${layer.max !== undefined ? layer.max.toFixed(4) : '-'}</td>
+                `;
+                tbody.appendChild(tr);
             });
         }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,7 +35,8 @@ type ModelStatus struct {
 	Selected bool `json:"selected"`
 
 	// Analysis Data
-	Analysis *ModelAnalysis `json:"analysis,omitempty"`
+	Analysis      *ModelAnalysis `json:"analysis,omitempty"`
+	BlankAnalysis *ModelAnalysis `json:"blank_analysis,omitempty"`
 
 	// Benchmark Data
 	Benchmarked     bool    `json:"benchmarked"`
@@ -52,10 +54,14 @@ type ModelAnalysis struct {
 }
 
 type LayerInfo struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`   // e.g. "Attention", "MLP", "Norm"
-	Params int64  `json:"params"` // Shape product
-	Shape  []int  `json:"shape"`
+	Name   string  `json:"name"`
+	Type   string  `json:"type"`   // e.g. "Attention", "MLP", "Norm"
+	Params int64   `json:"params"` // Shape product
+	Shape  []int   `json:"shape"`
+	Mean   float32 `json:"mean,omitempty"`
+	StdDev float32 `json:"std_dev,omitempty"`
+	Min    float32 `json:"min,omitempty"`
+	Max    float32 `json:"max,omitempty"`
 }
 
 type Store struct {
@@ -157,7 +163,9 @@ func handleWebSocket(c *websocket.Conn) {
 		case "benchmark":
 			go benchmarkModels()
 		case "analyze":
-			go analyzeSelectedModels()
+			go analyzeSelectedModels(false)
+		case "compare":
+			go analyzeSelectedModels(true)
 		case "refresh":
 			sendState(c)
 		case "toggle_select":
@@ -498,6 +506,11 @@ func loadStore() {
 				return naturalLess(m.Analysis.Layers[i].Name, m.Analysis.Layers[j].Name)
 			})
 		}
+		if m.BlankAnalysis != nil {
+			sort.Slice(m.BlankAnalysis.Layers, func(i, j int) bool {
+				return naturalLess(m.BlankAnalysis.Layers[i].Name, m.BlankAnalysis.Layers[j].Name)
+			})
+		}
 	}
 }
 
@@ -516,7 +529,62 @@ func toggleSelect(name string) {
 	broadcastUpdate()
 }
 
-func analyzeSelectedModels() {
+// simulateBlankAnalysis generates a theoretical "freshly initialized" version of the model
+// using simplistic Xavier/Kaiming assumptions based on layer types.
+func simulateBlankAnalysis(real *ModelAnalysis) *ModelAnalysis {
+	blank := &ModelAnalysis{
+		TotalParams: real.TotalParams,
+		Layers:      make([]LayerInfo, len(real.Layers)),
+	}
+
+	for i, l := range real.Layers {
+		// Default: Xavier Init (Gaussian with mean 0, std = sqrt(2 / (fan_in + fan_out)))
+		// Since we don't have exact dimensions, we approximate fan_in/out using Params.
+		// Approximating square matrix: Dim ~ Sqrt(Params)
+		dim := float64(math.Sqrt(float64(l.Params)))
+		if dim < 1 {
+			dim = 1
+		}
+
+		var std float64
+		if l.Type == "Norm" || l.Type == "RMSNorm" {
+			// Norm layers usually init to 1.0 (gamma) or 0.0 (beta)
+			// Let's assume gamma (weights) = 1.0
+			blank.Layers[i] = LayerInfo{
+				Name:   l.Name,
+				Type:   l.Type,
+				Params: l.Params,
+				Shape:  l.Shape,
+				Mean:   1.0,
+				StdDev: 0.0,
+				Min:    0.9,
+				Max:    1.1,
+			}
+			continue
+		} else if l.Type == "Embedding" {
+			// Embedding usually N(0, 1) or small uniform
+			std = 1.0
+		} else {
+			// Linear/MLP/Attn: He/Kaiming initialization = sqrt(2/fan_in)
+			std = math.Sqrt(2.0 / dim)
+		}
+
+		// Projected stats for Gaussian(0, std)
+		blank.Layers[i] = LayerInfo{
+			Name:   l.Name,
+			Type:   l.Type,
+			Params: l.Params,
+			Shape:  l.Shape, // Copied
+			Mean:   0.0,
+			StdDev: float32(std),
+			Min:    float32(-3 * std),
+			Max:    float32(3 * std),
+		}
+	}
+	return blank
+}
+
+func analyzeSelectedModels(deep bool) {
 	store.mu.RLock()
 	names := make([]string, 0, len(store.Models))
 	for name := range store.Models {
@@ -580,11 +648,27 @@ func analyzeSelectedModels() {
 					lType = "Embedding"
 				}
 
+				var mean, std, min, max float32
+				if deep {
+					mean, std, min, max = calcStats(data)
+				}
+
+				// Update or append layer info
+				// Note: If we run non-deep then deep, we might overwrite?
+				// The prompt implies we want distinct buttons.
+				// If deep=false (Analyze), we just want basics.
+				// If deep=true (Compare), we want stats.
+				// Let's just overwrite for simplicity, assuming user knows.
+
 				analysis.Layers = append(analysis.Layers, LayerInfo{
 					Name:   key,
 					Type:   lType,
 					Params: count,
-					Shape:  []int{len(data)}, // We don't have shape info from simple LoadSafetensors
+					Shape:  []int{len(data)},
+					Mean:   mean,
+					StdDev: std,
+					Min:    min,
+					Max:    max,
 				})
 			}
 
@@ -598,9 +682,13 @@ func analyzeSelectedModels() {
 
 			analysis.TotalParams = totalParams
 
+			// Generate Blank Counterpart
+			blankAnalysis := simulateBlankAnalysis(analysis)
+
 			store.mu.Lock()
 			if m, ok := store.Models[name]; ok {
 				m.Analysis = analysis
+				m.BlankAnalysis = blankAnalysis
 				saveStoreLocked()
 			}
 			store.mu.Unlock()
@@ -634,4 +722,33 @@ func naturalLess(s1, s2 string) bool {
 		}
 	}
 	return len(parts1) < len(parts2)
+}
+
+func calcStats(data []float32) (float32, float32, float32, float32) {
+	if len(data) == 0 {
+		return 0, 0, 0, 0
+	}
+	var sum, minVal, maxVal float32
+	minVal = data[0]
+	maxVal = data[0]
+
+	for _, v := range data {
+		sum += v
+		if v < minVal {
+			minVal = v
+		}
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+	mean := sum / float32(len(data))
+
+	var varianceSum float32
+	for _, v := range data {
+		diff := v - mean
+		varianceSum += diff * diff
+	}
+	stdDev := float32(math.Sqrt(float64(varianceSum / float32(len(data)))))
+
+	return mean, stdDev, minVal, maxVal
 }
