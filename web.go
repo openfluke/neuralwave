@@ -175,6 +175,18 @@ func handleWebSocket(c *websocket.Conn) {
 			if err := json.Unmarshal(msg.Payload, &payload); err == nil && payload.Name != "" {
 				toggleSelect(payload.Name)
 			}
+		case "inspect":
+			var payload struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil && payload.Name != "" {
+				result := inspectModel(payload.Name)
+				data, _ := json.Marshal(map[string]interface{}{
+					"type": "inspect_result",
+					"data": result,
+				})
+				c.WriteMessage(websocket.TextMessage, data)
+			}
 		}
 	}
 }
@@ -489,6 +501,181 @@ func runInference(path string) (*BenchResult, error) {
 		HiddenSize: hiddenSize,
 		VocabSize:  vocabSize,
 	}, nil
+}
+
+// InspectResult holds diagnostic information about a model
+type InspectResult struct {
+	ModelName string                 `json:"model_name"`
+	ModelPath string                 `json:"model_path"`
+	Error     string                 `json:"error,omitempty"`
+	Config    map[string]interface{} `json:"config,omitempty"`
+	Tensors   []TensorInfo           `json:"tensors"`
+	Summary   InspectSummary         `json:"summary"`
+}
+
+type TensorInfo struct {
+	Name       string `json:"name"`
+	Recognized bool   `json:"recognized"`
+	LayerType  string `json:"layer_type"`
+	Pattern    string `json:"pattern,omitempty"` // Which pattern matched
+}
+
+type InspectSummary struct {
+	TotalTensors      int  `json:"total_tensors"`
+	RecognizedTensors int  `json:"recognized_tensors"`
+	UnknownTensors    int  `json:"unknown_tensors"`
+	HasConfig         bool `json:"has_config"`
+	HasSafetensors    bool `json:"has_safetensors"`
+	HasTokenizer      bool `json:"has_tokenizer"`
+}
+
+// inspectModel analyzes a model's structure without fully loading it
+func inspectModel(name string) *InspectResult {
+	store.mu.RLock()
+	model, exists := store.Models[name]
+	store.mu.RUnlock()
+
+	if !exists {
+		return &InspectResult{
+			ModelName: name,
+			Error:     "Model not found in store",
+		}
+	}
+
+	result := &InspectResult{
+		ModelName: name,
+		ModelPath: model.Path,
+		Error:     model.Error,
+		Tensors:   []TensorInfo{},
+	}
+
+	// Check for required files
+	configPath := filepath.Join(model.Path, "config.json")
+	safetensorsPath := filepath.Join(model.Path, "model.safetensors")
+	tokenizerPath := filepath.Join(model.Path, "tokenizer.json")
+
+	if _, err := os.Stat(configPath); err == nil {
+		result.Summary.HasConfig = true
+		// Load and parse config
+		if data, err := os.ReadFile(configPath); err == nil {
+			var config map[string]interface{}
+			if json.Unmarshal(data, &config) == nil {
+				result.Config = config
+			}
+		}
+	}
+
+	if _, err := os.Stat(safetensorsPath); err == nil {
+		result.Summary.HasSafetensors = true
+	}
+
+	if _, err := os.Stat(tokenizerPath); err == nil {
+		result.Summary.HasTokenizer = true
+	}
+
+	// Load safetensors to get tensor names
+	if result.Summary.HasSafetensors {
+		tensors, err := nn.LoadSafetensors(safetensorsPath)
+		if err != nil {
+			result.Error = fmt.Sprintf("Failed to load safetensors: %v", err)
+		} else {
+			// Analyze each tensor
+			for tensorName := range tensors {
+				info := classifyTensor(tensorName)
+				result.Tensors = append(result.Tensors, info)
+				result.Summary.TotalTensors++
+				if info.Recognized {
+					result.Summary.RecognizedTensors++
+				} else {
+					result.Summary.UnknownTensors++
+				}
+			}
+			// Sort tensors by name
+			sort.Slice(result.Tensors, func(i, j int) bool {
+				return naturalLess(result.Tensors[i].Name, result.Tensors[j].Name)
+			})
+		}
+	}
+
+	return result
+}
+
+// classifyTensor determines if a tensor name matches known patterns
+func classifyTensor(name string) TensorInfo {
+	lower := strings.ToLower(name)
+
+	// Known patterns for LOOM-supported architectures
+	patterns := []struct {
+		pattern   string
+		layerType string
+	}{
+		// Embeddings
+		{"embed_tokens.weight", "Embedding"},
+		{"wte.weight", "Embedding"},
+		{"word_embeddings.weight", "Embedding"},
+		{"embeddings.weight", "Embedding"},
+
+		// Attention
+		{"self_attn.q_proj", "Attention.Q"},
+		{"self_attn.k_proj", "Attention.K"},
+		{"self_attn.v_proj", "Attention.V"},
+		{"self_attn.o_proj", "Attention.O"},
+		{"attention.query", "Attention.Q"},
+		{"attention.key", "Attention.K"},
+		{"attention.value", "Attention.V"},
+		{"attention.output", "Attention.O"},
+		{"attn.c_attn", "Attention.QKV"},
+		{"attn.c_proj", "Attention.O"},
+		{"attn.q_proj", "Attention.Q"},
+		{"attn.k_proj", "Attention.K"},
+		{"attn.v_proj", "Attention.V"},
+		{"attn.o_proj", "Attention.O"},
+
+		// MLP/FFN
+		{"mlp.gate_proj", "MLP.Gate"},
+		{"mlp.up_proj", "MLP.Up"},
+		{"mlp.down_proj", "MLP.Down"},
+		{"mlp.c_fc", "MLP.FC"},
+		{"mlp.c_proj", "MLP.Proj"},
+		{"feed_forward", "MLP"},
+		{"ffn", "MLP"},
+
+		// Normalization
+		{"input_layernorm", "Norm.Input"},
+		{"post_attention_layernorm", "Norm.PostAttn"},
+		{"ln_1", "Norm.Pre"},
+		{"ln_2", "Norm.Post"},
+		{"ln_f", "Norm.Final"},
+		{"norm.weight", "Norm"},
+		{"layernorm", "Norm"},
+		{"rms_norm", "RMSNorm"},
+
+		// Output
+		{"lm_head", "LMHead"},
+
+		// Rotary embeddings
+		{"rotary_emb", "RotaryEmb"},
+		{"inv_freq", "RotaryEmb"},
+	}
+
+	for _, p := range patterns {
+		if strings.Contains(lower, p.pattern) {
+			return TensorInfo{
+				Name:       name,
+				Recognized: true,
+				LayerType:  p.layerType,
+				Pattern:    p.pattern,
+			}
+		}
+	}
+
+	// Unknown tensor
+	return TensorInfo{
+		Name:       name,
+		Recognized: false,
+		LayerType:  "Unknown",
+		Pattern:    "",
+	}
 }
 
 func loadStore() {

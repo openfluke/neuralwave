@@ -169,6 +169,7 @@ download_model "google/gemma-2b"
 download_model "google/gemma-2b-it"
 download_model "google/recurrentgemma-2b"
 download_model "google/recurrentgemma-2b-it"
+download_model "SofiTesfay2010/HRM-LLM"
 
 echo "----------------------------------------------------------------"
 echo "🎉 Process finished. Attempted $counter model family downloads."
