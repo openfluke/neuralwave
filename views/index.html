@@ -245,43 +245,48 @@
 
         <!-- VIEW: VISUALIZE (Three.js) -->
         <div id="view-visualize" class="animate-fade-in hidden h-[calc(100vh-140px)] flex flex-col">
-            <div class="flex justify-between items-center mb-4">
-                <div>
-                     <h2 class="text-2xl font-bold text-white">3D Visualization</h2>
-                     <p class="text-gray-400 text-sm">Visualize model architecture as specific blocks.</p>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <div class="flex items-center space-x-2 bg-gray-900 rounded-lg p-1 border border-gray-700">
-                        <select id="viz-model-select" onchange="onVizModelChange()" class="bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded outline-none border-none min-w-[180px]">
-                            <option value="">Select Model...</option>
-                        </select>
-                        <select id="viz-layer-select" onchange="onVizLayerChange()" class="bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded outline-none border-none min-w-[200px]">
-                            <option value="">All Layers</option>
-                        </select>
-                        <button onclick="startVizGeneration()" class="px-3 py-1 text-xs rounded font-bold bg-cyan-600 text-white hover:bg-cyan-500 transition-all">
-                            Generate
-                        </button>
+            <div class="flex flex-col gap-3 mb-4">
+                <!-- Header Row -->
+                <div class="flex flex-wrap justify-between items-center gap-2">
+                    <div class="flex-shrink-0">
+                         <h2 class="text-xl font-bold text-white">3D Visualization</h2>
+                         <p class="text-gray-400 text-xs">Visualize model architecture as specific blocks.</p>
                     </div>
-                    <!-- LOOM Model Controls -->
-                    <div class="flex items-center space-x-2 bg-gray-900 rounded-lg p-1 border border-purple-700/50">
-                        <input type="text" id="loom-folder-path" value="./loom/examples/step_example" 
-                               placeholder="LOOM folder path" 
-                               class="bg-gray-800 text-white text-xs py-1 px-2 rounded outline-none border-none w-[180px] placeholder-gray-500">
-                        <button onclick="scanLoomFolder()" class="px-2 py-1 text-xs rounded font-bold bg-purple-600 text-white hover:bg-purple-500 transition-all">
-                            Scan
-                        </button>
-                        <select id="viz-loom-select" onchange="onLoomModelChange()" class="bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded outline-none border-none min-w-[160px]">
-                            <option value="">LOOM Models...</option>
-                        </select>
-                        <button onclick="loadLoomModel()" class="px-3 py-1 text-xs rounded font-bold bg-purple-600 text-white hover:bg-purple-500 transition-all">
-                            Load LOOM
-                        </button>
+                    <!-- Controls Container - wraps on smaller screens -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Standard Model Controls -->
+                        <div class="flex flex-wrap items-center gap-1 bg-gray-900/80 rounded-lg p-1.5 border border-gray-700">
+                            <select id="viz-model-select" onchange="onVizModelChange()" class="bg-gray-800 text-white text-xs font-bold py-1.5 px-2 rounded outline-none border-none w-[140px]">
+                                <option value="">Model...</option>
+                            </select>
+                            <select id="viz-layer-select" onchange="onVizLayerChange()" class="bg-gray-800 text-white text-xs font-bold py-1.5 px-2 rounded outline-none border-none w-[120px]">
+                                <option value="">All Layers</option>
+                            </select>
+                            <button onclick="startVizGeneration()" class="px-2 py-1.5 text-xs rounded font-bold bg-cyan-600 text-white hover:bg-cyan-500 transition-all whitespace-nowrap">
+                                Generate
+                            </button>
+                        </div>
+                        <!-- LOOM Model Controls -->
+                        <div class="flex flex-wrap items-center gap-1 bg-gray-900/80 rounded-lg p-1.5 border border-purple-700/50">
+                            <input type="text" id="loom-folder-path" value="./loom/examples/step_example" 
+                                   placeholder="LOOM path" 
+                                   class="bg-gray-800 text-white text-xs py-1.5 px-2 rounded outline-none border-none w-[130px] placeholder-gray-500">
+                            <button onclick="scanLoomFolder()" class="px-2 py-1.5 text-xs rounded font-bold bg-purple-600 text-white hover:bg-purple-500 transition-all">
+                                Scan
+                            </button>
+                            <select id="viz-loom-select" onchange="onLoomModelChange()" class="bg-gray-800 text-white text-xs font-bold py-1.5 px-2 rounded outline-none border-none w-[140px]">
+                                <option value="">LOOM...</option>
+                            </select>
+                            <button onclick="loadLoomModel()" class="px-2 py-1.5 text-xs rounded font-bold bg-purple-600 text-white hover:bg-purple-500 transition-all whitespace-nowrap">
+                                Load
+                            </button>
+                        </div>
+                        <!-- Layer Connections Toggle -->
+                        <label class="flex items-center gap-1.5 bg-gray-900/80 rounded-lg px-2 py-1.5 border border-gray-700 cursor-pointer select-none whitespace-nowrap">
+                            <input type="checkbox" id="viz-connections-toggle" onchange="toggleInterLayerConnections()" class="w-3.5 h-3.5 rounded bg-gray-800 border-gray-600 text-cyan-500 focus:ring-cyan-500 cursor-pointer">
+                            <span class="text-xs font-medium text-gray-300">Connections</span>
+                        </label>
                     </div>
-                    <!-- Inter-Layer Connections Toggle -->
-                    <label class="flex items-center space-x-2 bg-gray-900 rounded-lg px-3 py-1 border border-gray-700 cursor-pointer select-none">
-                        <input type="checkbox" id="viz-connections-toggle" onchange="toggleInterLayerConnections()" class="w-4 h-4 rounded bg-gray-800 border-gray-600 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-gray-900 cursor-pointer">
-                        <span class="text-xs font-medium text-gray-300">Layer Connections</span>
-                    </label>
                 </div>
             </div>
             <div id="three-container" class="flex-1 rounded-xl glass overflow-hidden relative border border-gray-700">
