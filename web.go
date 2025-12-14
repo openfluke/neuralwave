@@ -102,7 +102,8 @@ type LoomLayerTelemetry struct {
 	OutputShape []int `json:"output_shape,omitempty"`
 
 	// For nested/parallel layers
-	Branches []LoomLayerTelemetry `json:"branches,omitempty"`
+	Branches    []LoomLayerTelemetry `json:"branches,omitempty"`
+	CombineMode string               `json:"combine_mode,omitempty"` // "concat", "add", "avg", "grid_scatter"
 }
 
 var (

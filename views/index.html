@@ -737,9 +737,60 @@
                     const totalHeight = (branchCount - 1) * branchSpacing;
                     const startY = totalHeight / 2;
                     
-                    // Render container label for the parallel group
-                    group.add(createLabel(`[${l.grid_row},${l.grid_col}] parallel (${branchCount} branches)`, 
+                    // Get combine mode symbol
+                    const combineMode = l.combine_mode || 'concat';
+                    const modeSymbols = {
+                        'concat': '⊕',  // concatenate
+                        'add': '+',      // element-wise add
+                        'avg': '÷',      // average
+                        'grid_scatter': '⊞' // grid scatter
+                    };
+                    const modeSymbol = modeSymbols[combineMode] || '?';
+                    
+                    // Render container label for the parallel group with combine mode
+                    group.add(createLabel(`[${l.grid_row},${l.grid_col}] parallel ${modeSymbol} (${branchCount})`, 
                         new THREE.Vector3(0, startY + 5, z), 0.6));
+                    
+                    // Render merge point indicator after branches
+                    const mergeZ = z + 8;
+                    const mergeGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                    const mergeColor = combineMode === 'add' ? 0x22c55e : 
+                                        combineMode === 'avg' ? 0xeab308 : 
+                                        combineMode === 'grid_scatter' ? 0xa855f7 : 0x06b6d4;
+                    const mergeMat = new THREE.MeshStandardMaterial({ 
+                        color: mergeColor, 
+                        transparent: true, 
+                        opacity: 0.8,
+                        emissive: mergeColor,
+                        emissiveIntensity: 0.3
+                    });
+                    const mergeMesh = new THREE.Mesh(mergeGeo, mergeMat);
+                    mergeMesh.position.set(0, 0, mergeZ);
+                    group.add(mergeMesh);
+                    
+                    // Add merge label
+                    group.add(createLabel(`${combineMode}`, new THREE.Vector3(2, 0, mergeZ), 0.4));
+                    
+                    // Draw lines from each branch to merge point
+                    const lineGeo = new THREE.BufferGeometry();
+                    const linePos = [];
+                    const lineCols = [];
+                    const lineColor = new THREE.Color(mergeColor);
+                    
+                    for (let bIdx = 0; bIdx < branchCount; bIdx++) {
+                        const branchY = startY - (bIdx * branchSpacing);
+                        // Line from branch to merge point
+                        linePos.push(0, branchY, z + 2);  // Start at branch
+                        linePos.push(0, 0, mergeZ - 1);   // End at merge point
+                        lineCols.push(lineColor.r, lineColor.g, lineColor.b);
+                        lineCols.push(lineColor.r, lineColor.g, lineColor.b);
+                    }
+                    
+                    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+                    lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCols, 3));
+                    const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6 });
+                    const lines = new THREE.LineSegments(lineGeo, lineMat);
+                    group.add(lines);
                     
                     for (let bIdx = 0; bIdx < branchCount; bIdx++) {
                         const branch = l.branches[bIdx];
@@ -749,7 +800,7 @@
                         let colorHex = getLayerColor(branch.type);
                         
                         seed(modelName + branch.type + i + bIdx);
-                        renderLoomLayer(group, branch, z, branchY, colorHex, modelName, layerIdx, true, bIdx);
+                        renderLoomLayer(group, branch, z, branchY, colorHex, modelName, layerIdx, true, bIdx, combineMode);
                         
                         layerPositions[layerIdx] = { z: z };
                         layerIdx++;
@@ -799,7 +850,7 @@
             return 0x06b6d4; // cyan default
         }
         
-        function renderLoomLayer(group, l, z, yOffset, color, mName, layerIndex, isBranch = false, branchIndex = 0) {
+        function renderLoomLayer(group, l, z, yOffset, color, mName, layerIndex, isBranch = false, branchIndex = 0, combineMode = '') {
             // Dimensions based on params
             const params = Math.max(l.parameters || 100, 100);
             const paramScale = Math.log10(params) / 5;
@@ -895,6 +946,7 @@
                 inputShape: l.input_shape,
                 outputShape: l.output_shape,
                 branches: l.branches,
+                combineMode: combineMode || l.combine_mode || '',
                 isLoom: true,
                 isBranch: isBranch,
                 branchIndex: branchIndex
