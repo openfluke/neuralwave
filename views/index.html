@@ -676,12 +676,25 @@
             
             await new Promise(r => requestAnimationFrame(r));
             
-            // Clear scene
+            // Clear scene completely - remove all children except grid helper
             const toRemove = [];
             scene.traverse((child) => {
-                if ((child.isMesh || child.isPoints || child.isLine || child.isSprite) && child.name !== 'helper') toRemove.push(child);
+                // Keep grid helper and camera, remove everything else
+                if (child !== scene && child.type !== 'GridHelper' && child.type !== 'AmbientLight' && child.type !== 'PointLight') {
+                    toRemove.push(child);
+                }
             });
-            toRemove.forEach(c => { scene.remove(c); if(c.geometry) c.geometry.dispose(); });
+            toRemove.forEach(c => { 
+                if (c.parent) c.parent.remove(c);
+                if (c.geometry) c.geometry.dispose();
+                if (c.material) {
+                    if (Array.isArray(c.material)) {
+                        c.material.forEach(m => m.dispose());
+                    } else {
+                        c.material.dispose();
+                    }
+                }
+            });
             interactableObjects = [];
             layerPositions = [];
             layerNodePositions = [];
