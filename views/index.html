@@ -262,6 +262,11 @@
                             Generate
                         </button>
                     </div>
+                    <!-- Inter-Layer Connections Toggle -->
+                    <label class="flex items-center space-x-2 bg-gray-900 rounded-lg px-3 py-1 border border-gray-700 cursor-pointer select-none">
+                        <input type="checkbox" id="viz-connections-toggle" onchange="toggleInterLayerConnections()" class="w-4 h-4 rounded bg-gray-800 border-gray-600 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-gray-900 cursor-pointer">
+                        <span class="text-xs font-medium text-gray-300">Layer Connections</span>
+                    </label>
                 </div>
             </div>
             <div id="three-container" class="flex-1 rounded-xl glass overflow-hidden relative border border-gray-700">
@@ -463,6 +468,84 @@
         // --- STATE ---
         let currentVizModel = null;
         let layerPositions = []; // Store layer Z positions for camera fly-to
+        let showInterLayerConnections = false; // Toggle for showing connections between layers
+        let interLayerConnectionGroup = null; // Group for inter-layer connection lines
+        let layerNodePositions = []; // Store neuron positions per layer for inter-layer connections
+        
+        function toggleInterLayerConnections() {
+            showInterLayerConnections = document.getElementById('viz-connections-toggle').checked;
+            
+            if (!scene) return;
+            
+            // Remove existing inter-layer connections
+            if (interLayerConnectionGroup) {
+                scene.remove(interLayerConnectionGroup);
+                interLayerConnectionGroup = null;
+            }
+            
+            // If enabled and we have layer data, render connections
+            if (showInterLayerConnections && layerNodePositions.length > 1) {
+                renderInterLayerConnections();
+            }
+        }
+        
+        function renderInterLayerConnections() {
+            if (!scene || layerNodePositions.length < 2) return;
+            
+            interLayerConnectionGroup = new THREE.Group();
+            interLayerConnectionGroup.name = 'inter-layer-connections';
+            
+            // Draw connections between consecutive layers
+            for (let i = 0; i < layerNodePositions.length - 1; i++) {
+                const currentLayer = layerNodePositions[i];
+                const nextLayer = layerNodePositions[i + 1];
+                
+                if (!currentLayer || !nextLayer || currentLayer.length === 0 || nextLayer.length === 0) continue;
+                
+                const lineGeo = new THREE.BufferGeometry();
+                const linePos = [];
+                const lineCols = [];
+                
+                // Number of connections to draw (limit for performance)
+                const connectionCount = Math.min(100, Math.min(currentLayer.length, nextLayer.length));
+                
+                for (let c = 0; c < connectionCount; c++) {
+                    // Sample random neurons from each layer
+                    const srcIdx = Math.floor(Math.random() * currentLayer.length);
+                    const dstIdx = Math.floor(Math.random() * nextLayer.length);
+                    
+                    const src = currentLayer[srcIdx];
+                    const dst = nextLayer[dstIdx];
+                    
+                    linePos.push(src.x, src.y, src.z);
+                    linePos.push(dst.x, dst.y, dst.z);
+                    
+                    // Gradient color from current to next layer
+                    const strength = 0.3 + Math.random() * 0.5;
+                    // Use a flowing gradient color (cyan to purple)
+                    const startColor = new THREE.Color(0x06b6d4).multiplyScalar(strength);
+                    const endColor = new THREE.Color(0xa855f7).multiplyScalar(strength);
+                    
+                    lineCols.push(startColor.r, startColor.g, startColor.b);
+                    lineCols.push(endColor.r, endColor.g, endColor.b);
+                }
+                
+                lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+                lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCols, 3));
+                
+                const lineMat = new THREE.LineBasicMaterial({
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.4,
+                    blending: THREE.AdditiveBlending
+                });
+                
+                const lines = new THREE.LineSegments(lineGeo, lineMat);
+                interLayerConnectionGroup.add(lines);
+            }
+            
+            scene.add(interLayerConnectionGroup);
+        }
 
         function onVizModelChange() {
             const select = document.getElementById('viz-model-select');
@@ -567,6 +650,13 @@
             toRemove.forEach(c => { scene.remove(c); if(c.geometry) c.geometry.dispose(); });
             interactableObjects = [];
             layerPositions = [];
+            layerNodePositions = []; // Clear stored node positions for inter-layer connections
+            
+            // Clear existing inter-layer connections
+            if (interLayerConnectionGroup) {
+                scene.remove(interLayerConnectionGroup);
+                interLayerConnectionGroup = null;
+            }
 
             const analysis = m.analysis;
             const group = new THREE.Group();
@@ -603,6 +693,11 @@
             }
             
             scene.add(group);
+            
+            // Render inter-layer connections if toggle is enabled
+            if (showInterLayerConnections && layerNodePositions.length > 1) {
+                renderInterLayerConnections();
+            }
             
             // Reset Camera
             flyTo(new THREE.Vector3(30, 30, 50), new THREE.Vector3(0, 0, 0));
@@ -648,6 +743,17 @@
              const nodeMat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, opacity: 0.95 });
              const nodes = new THREE.Points(nodeGeo, nodeMat);
              group.add(nodes);
+             
+             // Store node positions for inter-layer connections
+             const layerNodes = [];
+             for (let i = 0; i < neuronCount; i++) {
+                 layerNodes.push({
+                     x: nodePos[i * 3],
+                     y: nodePos[i * 3 + 1],
+                     z: nodePos[i * 3 + 2]
+                 });
+             }
+             layerNodePositions[layerIndex] = layerNodes;
              
              // 2. Internal Connections (The Sparse Web)
              const lineGeo = new THREE.BufferGeometry();
