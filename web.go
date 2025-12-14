@@ -69,6 +69,42 @@ type Store struct {
 	mu     sync.RWMutex
 }
 
+// LoomModel represents a LOOM AI model with telemetry data
+type LoomModel struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Path      string         `json:"path"`
+	Telemetry *LoomTelemetry `json:"telemetry"`
+}
+
+// LoomTelemetry represents a LOOM network's structure (matches telemetry.go format)
+type LoomTelemetry struct {
+	ID          string               `json:"id"`
+	TotalLayers int                  `json:"total_layers"`
+	TotalParams int                  `json:"total_parameters"`
+	Layers      []LoomLayerTelemetry `json:"layers"`
+}
+
+// LoomLayerTelemetry contains metadata about a specific LOOM layer
+type LoomLayerTelemetry struct {
+	// Grid position
+	GridRow   int `json:"grid_row"`
+	GridCol   int `json:"grid_col"`
+	CellLayer int `json:"cell_layer"`
+
+	// Layer info
+	Type       string `json:"type"`
+	Activation string `json:"activation,omitempty"`
+	Parameters int    `json:"parameters"`
+
+	// Dimensions
+	InputShape  []int `json:"input_shape,omitempty"`
+	OutputShape []int `json:"output_shape,omitempty"`
+
+	// For nested/parallel layers
+	Branches []LoomLayerTelemetry `json:"branches,omitempty"`
+}
+
 var (
 	store = Store{
 		Models: make(map[string]*ModelStatus),
@@ -79,6 +115,10 @@ var (
 	clients   = make(map[*websocket.Conn]bool)
 	clientsMu sync.Mutex
 	broadcast = make(chan []byte)
+
+	// LOOM Models
+	loomModels   = make(map[string]*LoomModel)
+	loomModelsMu sync.RWMutex
 )
 
 func runWeb(port int) {
@@ -186,6 +226,13 @@ func handleWebSocket(c *websocket.Conn) {
 					"data": result,
 				})
 				c.WriteMessage(websocket.TextMessage, data)
+			}
+		case "scan_loom_folder":
+			var payload struct {
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil && payload.Path != "" {
+				go scanLoomFolder(payload.Path)
 			}
 		}
 	}
@@ -938,4 +985,74 @@ func calcStats(data []float32) (float32, float32, float32, float32) {
 	stdDev := float32(math.Sqrt(float64(varianceSum / float32(len(data)))))
 
 	return mean, stdDev, minVal, maxVal
+}
+
+// scanLoomFolder scans a directory for LOOM model telemetry files
+func scanLoomFolder(folderPath string) {
+	fmt.Printf("📂 Scanning LOOM folder: %s\n", folderPath)
+
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		fmt.Printf("⚠️ Error reading folder: %v\n", err)
+		return
+	}
+
+	loomModelsMu.Lock()
+	// Clear existing models
+	loomModels = make(map[string]*LoomModel)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		// Only process *_telemetry.json files
+		if !strings.HasSuffix(name, "_telemetry.json") {
+			continue
+		}
+
+		filePath := filepath.Join(folderPath, name)
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			fmt.Printf("⚠️ Error reading %s: %v\n", name, err)
+			continue
+		}
+
+		var telemetry LoomTelemetry
+		if err := json.Unmarshal(data, &telemetry); err != nil {
+			fmt.Printf("⚠️ Error parsing %s: %v\n", name, err)
+			continue
+		}
+
+		// Extract model name from filename (remove _telemetry.json suffix)
+		modelName := strings.TrimSuffix(name, "_telemetry.json")
+		if telemetry.ID != "" {
+			modelName = telemetry.ID
+		}
+
+		loomModels[modelName] = &LoomModel{
+			ID:        modelName,
+			Name:      modelName,
+			Path:      filePath,
+			Telemetry: &telemetry,
+		}
+		fmt.Printf("  ✓ Loaded LOOM model: %s (%d layers, %d params)\n",
+			modelName, telemetry.TotalLayers, telemetry.TotalParams)
+	}
+	loomModelsMu.Unlock()
+
+	fmt.Printf("📦 Found %d LOOM models\n", len(loomModels))
+	broadcastLoomUpdate()
+}
+
+// broadcastLoomUpdate sends the current LOOM models to all connected clients
+func broadcastLoomUpdate() {
+	loomModelsMu.RLock()
+	data, _ := json.Marshal(map[string]interface{}{
+		"type": "loom_update",
+		"data": loomModels,
+	})
+	loomModelsMu.RUnlock()
+	broadcast <- data
 }

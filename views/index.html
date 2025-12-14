@@ -262,6 +262,21 @@
                             Generate
                         </button>
                     </div>
+                    <!-- LOOM Model Controls -->
+                    <div class="flex items-center space-x-2 bg-gray-900 rounded-lg p-1 border border-purple-700/50">
+                        <input type="text" id="loom-folder-path" value="./loom/examples/step_example" 
+                               placeholder="LOOM folder path" 
+                               class="bg-gray-800 text-white text-xs py-1 px-2 rounded outline-none border-none w-[180px] placeholder-gray-500">
+                        <button onclick="scanLoomFolder()" class="px-2 py-1 text-xs rounded font-bold bg-purple-600 text-white hover:bg-purple-500 transition-all">
+                            Scan
+                        </button>
+                        <select id="viz-loom-select" onchange="onLoomModelChange()" class="bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded outline-none border-none min-w-[160px]">
+                            <option value="">LOOM Models...</option>
+                        </select>
+                        <button onclick="loadLoomModel()" class="px-3 py-1 text-xs rounded font-bold bg-purple-600 text-white hover:bg-purple-500 transition-all">
+                            Load LOOM
+                        </button>
+                    </div>
                     <!-- Inter-Layer Connections Toggle -->
                     <label class="flex items-center space-x-2 bg-gray-900 rounded-lg px-3 py-1 border border-gray-700 cursor-pointer select-none">
                         <input type="checkbox" id="viz-connections-toggle" onchange="toggleInterLayerConnections()" class="w-4 h-4 rounded bg-gray-800 border-gray-600 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-gray-900 cursor-pointer">
@@ -325,6 +340,8 @@
         let ws;
         let retryInterval = 1000;
         let globalModels = {};
+        let loomModels = {};  // LOOM model data from telemetry files
+        let currentLoomModel = null;  // Currently selected LOOM model
         
         // --- Three.js Globals Moved Below ---
 
@@ -366,6 +383,10 @@
                     setTimeout(() => document.getElementById('streamStatus').classList.add('hidden'), 500);
                 } else if (msg.type === 'inspect_result') {
                     renderInspectResult(msg.data);
+                } else if (msg.type === 'loom_update') {
+                    loomModels = msg.data;
+                    updateLoomSelector(msg.data);
+                    showToast(`Found ${Object.keys(msg.data).length} LOOM models`);
                 }
             };
         }
@@ -589,6 +610,284 @@
                     stats: { mean: l.mean, std: l.std_dev }
                 });
             }
+        }
+        
+        // --- LOOM Model Functions ---
+        
+        function scanLoomFolder() {
+            const folderPath = document.getElementById('loom-folder-path').value;
+            if (!folderPath) {
+                showToast('❌ Please enter a folder path');
+                return;
+            }
+            sendAction('scan_loom_folder', { path: folderPath });
+        }
+        
+        function updateLoomSelector(models) {
+            const select = document.getElementById('viz-loom-select');
+            select.innerHTML = '<option value="">LOOM Models...</option>';
+            
+            // Sort by model name
+            const sortedNames = Object.keys(models).sort();
+            
+            for (const name of sortedNames) {
+                const model = models[name];
+                const opt = document.createElement('option');
+                opt.value = name;
+                const layers = model.telemetry ? model.telemetry.total_layers : 0;
+                const params = model.telemetry ? model.telemetry.total_parameters : 0;
+                opt.innerText = `${name} (${layers}L, ${params}P)`;
+                select.appendChild(opt);
+            }
+        }
+        
+        function onLoomModelChange() {
+            const select = document.getElementById('viz-loom-select');
+            const modelName = select.value;
+            currentLoomModel = loomModels[modelName] || null;
+        }
+        
+        async function loadLoomModel() {
+            if (!scene) initThreeJS();
+            
+            const select = document.getElementById('viz-loom-select');
+            const modelName = select.value;
+            
+            if (!modelName || !loomModels[modelName]) {
+                showToast('❌ Please select a LOOM model first');
+                return;
+            }
+            
+            const model = loomModels[modelName];
+            currentLoomModel = model;
+            
+            if (!model.telemetry || !model.telemetry.layers) {
+                showToast('❌ Model has no telemetry data');
+                return;
+            }
+            
+            const loader = document.getElementById('viz-loading');
+            const progress = document.getElementById('viz-progress-bar');
+            const text = document.getElementById('viz-loading-text');
+            
+            loader.classList.remove('hidden');
+            progress.style.width = '0%';
+            text.innerText = 'Building LOOM Network...';
+            
+            await new Promise(r => requestAnimationFrame(r));
+            
+            // Clear scene
+            const toRemove = [];
+            scene.traverse((child) => {
+                if ((child.isMesh || child.isPoints || child.isLine || child.isSprite) && child.name !== 'helper') toRemove.push(child);
+            });
+            toRemove.forEach(c => { scene.remove(c); if(c.geometry) c.geometry.dispose(); });
+            interactableObjects = [];
+            layerPositions = [];
+            layerNodePositions = [];
+            
+            // Clear existing inter-layer connections
+            if (interLayerConnectionGroup) {
+                scene.remove(interLayerConnectionGroup);
+                interLayerConnectionGroup = null;
+            }
+            
+            const telemetry = model.telemetry;
+            const group = new THREE.Group();
+            const totalLayers = telemetry.layers.length;
+            let processed = 0;
+            
+            // Model Title Label
+            group.add(createLabel(modelName, new THREE.Vector3(0, 18, 0), 1.5));
+            
+            let layerIdx = 0; // Track layer index for all rendered items
+            
+            for (let i = 0; i < totalLayers; i++) {
+                const l = telemetry.layers[i];
+                
+                // Progress
+                const pct = Math.round((processed / totalLayers) * 100);
+                progress.style.width = `${pct}%`;
+                text.innerText = `Layer ${i+1}/${totalLayers}: ${l.type}...`;
+                if (i % 3 === 0) await new Promise(r => setTimeout(r, 5)); // Yield
+                
+                // Calculate Z position based on grid position for better spatial layout
+                const gridZ = l.grid_col * 20;  // Increased spacing
+                const cellOffset = l.cell_layer * 3;
+                const z = gridZ + cellOffset;
+                
+                // Check if this is a parallel layer with branches
+                if (l.type.toLowerCase() === 'parallel' && l.branches && l.branches.length > 0) {
+                    // Render each branch as a separate visual element spread vertically
+                    const branchCount = l.branches.length;
+                    const branchSpacing = 5; // Vertical spacing between branches
+                    const totalHeight = (branchCount - 1) * branchSpacing;
+                    const startY = totalHeight / 2;
+                    
+                    // Render container label for the parallel group
+                    group.add(createLabel(`[${l.grid_row},${l.grid_col}] parallel (${branchCount} branches)`, 
+                        new THREE.Vector3(0, startY + 5, z), 0.6));
+                    
+                    for (let bIdx = 0; bIdx < branchCount; bIdx++) {
+                        const branch = l.branches[bIdx];
+                        const branchY = startY - (bIdx * branchSpacing);
+                        
+                        // Color by branch type
+                        let colorHex = getLayerColor(branch.type);
+                        
+                        seed(modelName + branch.type + i + bIdx);
+                        renderLoomLayer(group, branch, z, branchY, colorHex, modelName, layerIdx, true, bIdx);
+                        
+                        layerPositions[layerIdx] = { z: z };
+                        layerIdx++;
+                    }
+                } else {
+                    // Regular layer - render at y=0
+                    const yOffset = l.grid_row * 10;
+                    
+                    let colorHex = getLayerColor(l.type);
+                    
+                    seed(modelName + l.type + i);
+                    renderLoomLayer(group, l, z, yOffset, colorHex, modelName, layerIdx, false, 0);
+                    
+                    layerPositions[layerIdx] = { z: z };
+                    layerIdx++;
+                }
+                
+                processed++;
+            }
+            
+            scene.add(group);
+            
+            // Render inter-layer connections if toggle is enabled
+            if (showInterLayerConnections && layerNodePositions.length > 1) {
+                renderInterLayerConnections();
+            }
+            
+            // Reset Camera
+            flyTo(new THREE.Vector3(30, 30, 50), new THREE.Vector3(0, 0, 0));
+            
+            progress.style.width = '100%';
+            text.innerText = 'Done! Click layers to inspect.';
+            setTimeout(() => loader.classList.add('hidden'), 500);
+        }
+        
+        // Helper to get color based on layer type
+        function getLayerColor(layerType) {
+            const typeL = (layerType || '').toLowerCase();
+            if (typeL.includes("attn") || typeL.includes("mha") || typeL.includes("multihead")) return 0xa855f7; // purple
+            if (typeL.includes("mlp") || typeL.includes("swiglu")) return 0x22c55e; // green
+            if (typeL.includes("norm")) return 0xf97316; // orange
+            if (typeL.includes("dense")) return 0x3b82f6; // blue
+            if (typeL.includes("lstm")) return 0xec4899; // pink
+            if (typeL.includes("rnn")) return 0xf472b6; // light pink
+            if (typeL.includes("parallel")) return 0x8b5cf6; // violet
+            if (typeL.includes("conv")) return 0x14b8a6; // teal
+            return 0x06b6d4; // cyan default
+        }
+        
+        function renderLoomLayer(group, l, z, yOffset, color, mName, layerIndex, isBranch = false, branchIndex = 0) {
+            // Dimensions based on params
+            const params = Math.max(l.parameters || 100, 100);
+            const paramScale = Math.log10(params) / 5;
+            const baseH = isBranch ? 4 : 8;  // Smaller for branches
+            const baseW = isBranch ? 4 : 6;
+            const h = baseH * paramScale;
+            const w = baseW * paramScale;
+            const neuronCount = Math.min(Math.max(30, Math.floor(params / 100)), 300);
+            const connectionCount = Math.min(neuronCount * 15, 2000);
+            
+            // 1. Neurons as Points
+            const nodeGeo = new THREE.BufferGeometry();
+            const nodePos = [];
+            const nodeColors = [];
+            const baseColor = new THREE.Color(color);
+            
+            for(let i=0; i<neuronCount; i++) {
+                const x = (random() - 0.5) * w;
+                const y = (random() - 0.5) * h + yOffset;
+                const zOffset = (random() - 0.5) * 3;
+                
+                nodePos.push(x, y, z + zOffset);
+                
+                const brightness = 0.6 + random() * 0.6;
+                const c = baseColor.clone().multiplyScalar(brightness);
+                nodeColors.push(c.r, c.g, c.b);
+            }
+            
+            nodeGeo.setAttribute('position', new THREE.Float32BufferAttribute(nodePos, 3));
+            nodeGeo.setAttribute('color', new THREE.Float32BufferAttribute(nodeColors, 3));
+            
+            const nodeMat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, opacity: 0.95 });
+            const nodes = new THREE.Points(nodeGeo, nodeMat);
+            group.add(nodes);
+            
+            // Store node positions for inter-layer connections
+            const layerNodes = [];
+            for (let i = 0; i < neuronCount; i++) {
+                layerNodes.push({
+                    x: nodePos[i * 3],
+                    y: nodePos[i * 3 + 1],
+                    z: nodePos[i * 3 + 2]
+                });
+            }
+            layerNodePositions[layerIndex] = layerNodes;
+            
+            // 2. Internal Connections
+            const lineGeo = new THREE.BufferGeometry();
+            const linePos = [];
+            const lineCols = [];
+            
+            for(let i=0; i<connectionCount; i++) {
+                const inIdx = Math.floor(random() * neuronCount);
+                const outIdx = Math.floor(random() * neuronCount);
+                if (inIdx === outIdx) continue;
+                
+                linePos.push(
+                    nodePos[inIdx*3], nodePos[inIdx*3+1], nodePos[inIdx*3+2],
+                    nodePos[outIdx*3], nodePos[outIdx*3+1], nodePos[outIdx*3+2]
+                );
+                
+                const strength = Math.pow(random(), 2);
+                lineCols.push(baseColor.r * strength, baseColor.g * strength, baseColor.b * strength);
+                lineCols.push(baseColor.r * strength, baseColor.g * strength, baseColor.b * strength);
+            }
+            lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePos, 3));
+            lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineCols, 3));
+            
+            const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending });
+            const lines = new THREE.LineSegments(lineGeo, lineMat);
+            group.add(lines);
+            
+            // 3. Label with grid position and type
+            const gridPos = `[${l.grid_row},${l.grid_col}]`;
+            const branchInfo = isBranch ? `B${branchIndex}:` : '';
+            const labelText = isBranch ? `${branchInfo}${l.type}` : `${gridPos} ${l.type}`;
+            const labelScale = isBranch ? 0.4 : 0.5;
+            group.add(createLabel(labelText, new THREE.Vector3(isBranch ? -3 : 0, yOffset + h/2 + 0.8, z), labelScale));
+            
+            // 4. HitBox for Click with rich telemetry info
+            const hitBox = new THREE.Mesh(new THREE.BoxGeometry(w+2, h+2, 5), new THREE.MeshBasicMaterial({ visible: false }));
+            hitBox.position.set(0, yOffset, z);
+            hitBox.userData = { 
+                layerName: isBranch ? `Branch ${branchIndex}: ${l.type}` : `Layer ${layerIndex} (${gridPos})`,
+                layerType: l.type,
+                params: l.parameters,
+                modelName: mName,
+                layerIndex: layerIndex,
+                gridRow: l.grid_row,
+                gridCol: l.grid_col,
+                cellLayer: l.cell_layer,
+                activation: l.activation || 'none',
+                inputShape: l.input_shape,
+                outputShape: l.output_shape,
+                branches: l.branches,
+                isLoom: true,
+                isBranch: isBranch,
+                branchIndex: branchIndex
+            };
+            interactableObjects.push(hitBox);
+            group.add(hitBox);
         }
         
         function flyTo(targetPosition, targetLook) {
@@ -1595,6 +1894,25 @@
              // Store for extraction
              window.currentLayerData = data;
              
+             // LOOM-specific telemetry section
+             let loomInfo = '';
+             if (data.isLoom) {
+                 loomInfo = `
+                     <div class="mt-3 pt-2 border-t border-purple-700/50">
+                         <div class="text-xs text-purple-400 mb-2 font-bold">📍 LOOM Grid Position</div>
+                         <div class="grid grid-cols-3 gap-1 text-xs font-mono">
+                             <div class="text-center"><span class="text-gray-500">Row</span><br><span class="text-white">${data.gridRow !== undefined ? data.gridRow : '-'}</span></div>
+                             <div class="text-center"><span class="text-gray-500">Col</span><br><span class="text-white">${data.gridCol !== undefined ? data.gridCol : '-'}</span></div>
+                             <div class="text-center"><span class="text-gray-500">Cell</span><br><span class="text-white">${data.cellLayer !== undefined ? data.cellLayer : '-'}</span></div>
+                         </div>
+                         ${data.activation ? `<div class="mt-2 flex justify-between"><span class="text-gray-500 text-xs">Activation</span><span class="text-green-400 text-xs">${data.activation}</span></div>` : ''}
+                         ${data.inputShape ? `<div class="flex justify-between"><span class="text-gray-500 text-xs">Input</span><span class="text-cyan-400 text-xs">[${data.inputShape.join(', ')}]</span></div>` : ''}
+                         ${data.outputShape ? `<div class="flex justify-between"><span class="text-gray-500 text-xs">Output</span><span class="text-cyan-400 text-xs">[${data.outputShape.join(', ')}]</span></div>` : ''}
+                         ${data.branches && data.branches.length > 0 ? `<div class="mt-1 text-xs text-purple-300">↳ ${data.branches.length} parallel branches</div>` : ''}
+                     </div>
+                 `;
+             }
+             
              panel.innerHTML = `
                 <div class="flex justify-between items-start mb-3">
                     <h3 class="text-base font-bold text-white break-words w-48">${data.layerType.split('.').pop()}</h3>
@@ -1604,9 +1922,10 @@
                     <div class="text-cyan-400 text-xs truncate" title="${data.layerName}">${data.layerName}</div>
                     <div class="h-px bg-gray-700 my-2"></div>
                     <div class="flex justify-between"><span class="text-gray-500">Params</span> <span class="text-white">${(data.params/1000000).toFixed(2)}M</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">Mean</span> <span class="text-yellow-400">${typeof data.stats.mean === 'number' ? data.stats.mean.toExponential(3) : '-'}</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">StdDev</span> <span class="text-purple-400">${typeof data.stats.std === 'number' ? data.stats.std.toFixed(5) : '-'}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Mean</span> <span class="text-yellow-400">${typeof data.stats?.mean === 'number' ? data.stats.mean.toExponential(3) : '-'}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">StdDev</span> <span class="text-purple-400">${typeof data.stats?.std === 'number' ? data.stats.std.toFixed(5) : '-'}</span></div>
                 </div>
+                ${loomInfo}
                 ${componentLegend}
                 <div class="mt-3 pt-2 border-t border-gray-700">
                     <button onclick="extractFeatures()" class="w-full py-2 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 rounded text-xs font-bold border border-purple-500/40 transition-all">
