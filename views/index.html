@@ -1085,6 +1085,16 @@
             const event = events[currentEventIndex];
             if (!event) return;
             
+            updateTimelineControls(event);
+            
+            // Animate the layer in 3D
+            dimAllLayers();
+            animateLayerFromEvent(event);
+        }
+
+        // Helper to update just the UI text/controls
+        function updateTimelineControls(event) {
+            const events = currentActivityData.events;
             // Update slider position
             document.getElementById('timeline-slider').value = currentEventIndex;
             
@@ -1092,7 +1102,6 @@
             document.getElementById('timeline-event-num').textContent = 
                 `${currentEventIndex + 1} / ${events.length}`;
             
-            // Update direction indicator
             // Update direction indicator with Mode
             const dirEl = document.getElementById('timeline-direction');
             const isForward = event.Type === 'forward';
@@ -1126,10 +1135,6 @@
                 layerTypeText = `Branch: ${layerTypeText}`;
             }
             document.getElementById('timeline-layer-type').textContent = layerTypeText;
-            
-            // Animate the layer in 3D
-            dimAllLayers();
-            animateLayerFromEvent(event);
         }
         
         // Play/Pause timeline
@@ -1165,8 +1170,45 @@
         function stepForward() {
             if (!currentActivityData || !currentActivityData.events) return;
             if (currentEventIndex < currentActivityData.events.length - 1) {
-                currentEventIndex++;
-                updateTimelineUI();
+                const currentEvent = currentActivityData.events[currentEventIndex];
+                
+                // If in STEP mode, advance whole step at once
+                if (currentEvent.mode === 'step') {
+                     // 1. Move to next event
+                     currentEventIndex++;
+                     const nextEvent = currentActivityData.events[currentEventIndex];
+                     if (!nextEvent) return;
+                     
+                     // 2. Identify the target step count AND type (to avoid mixing Fwd/Bwd)
+                     const targetStep = nextEvent.step_count;
+                     const targetType = nextEvent.Type;
+                     
+                     // 3. Dim all once
+                     dimAllLayers();
+                     
+                     // 4. Play all events in this step
+                     // Note: We are already at currentEventIndex. We check if THIS and SUBSEQUENT match targetStep & Type
+                     let idx = currentEventIndex;
+                     while(idx < currentActivityData.events.length) {
+                         const ev = currentActivityData.events[idx];
+                         // Break if step count changes OR if type changes (e.g. from backward to forward)
+                         if(ev.step_count !== targetStep || ev.Type !== targetType) {
+                             break;
+                         }
+                         animateLayerFromEvent(ev);
+                         idx++;
+                     }
+                     // Update index to the last played event
+                     currentEventIndex = idx - 1;
+                     
+                     // 5. Update UI Controls (using last event info)
+                     updateTimelineControls(currentActivityData.events[currentEventIndex]);
+                     
+                } else {
+                    // Normal Mode: One by One
+                    currentEventIndex++;
+                    updateTimelineUI();
+                }
             }
         }
         
