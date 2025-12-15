@@ -282,8 +282,9 @@
                             </button>
                         </div>
                         <!-- Layer Connections Toggle -->
+                        <!-- Layer Connections Toggle -->
                         <label class="flex items-center gap-1.5 bg-gray-900/80 rounded-lg px-2 py-1.5 border border-gray-700 cursor-pointer select-none whitespace-nowrap">
-                            <input type="checkbox" id="viz-connections-toggle" onchange="toggleInterLayerConnections()" class="w-3.5 h-3.5 rounded bg-gray-800 border-gray-600 text-cyan-500 focus:ring-cyan-500 cursor-pointer">
+                            <input type="checkbox" id="viz-connections-toggle" checked onchange="toggleInterLayerConnections()" class="w-3.5 h-3.5 rounded bg-gray-800 border-gray-600 text-cyan-500 focus:ring-cyan-500 cursor-pointer">
                             <span class="text-xs font-medium text-gray-300">Connections</span>
                         </label>
                     </div>
@@ -298,6 +299,55 @@
                     </div>
                 </div>
                 <!-- Canvas injected here -->
+            </div>
+            
+            <!-- Neural Activity Timeline Scrubber -->
+            <div id="activity-timeline" class="hidden mt-3 p-3 rounded-xl bg-gray-900/95 border border-cyan-500/30">
+                <div class="flex items-center gap-3 mb-2">
+                    <button onclick="playPauseTimeline()" id="timeline-play-btn" class="w-10 h-10 rounded-full bg-gradient-to-r from-green-500 to-cyan-500 text-white flex items-center justify-center font-bold text-lg hover:scale-110 transition-transform shadow-lg shadow-cyan-500/30">
+                        ▶
+                    </button>
+                    <button onclick="stepBackward()" class="w-8 h-8 rounded bg-gray-700 text-white hover:bg-gray-600 flex items-center justify-center text-sm">⏮</button>
+                    <button onclick="stepForward()" class="w-8 h-8 rounded bg-gray-700 text-white hover:bg-gray-600 flex items-center justify-center text-sm">⏭</button>
+                    
+                    <!-- Current Event Info -->
+                    <div id="timeline-event-info" class="flex-1 px-4 py-2 rounded-lg bg-gray-800 border border-gray-700">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-400">Event:</span>
+                            <span id="timeline-event-num" class="text-lg font-bold text-white font-mono">0 / 0</span>
+                            <span id="timeline-direction" class="px-3 py-0.5 rounded-full text-sm font-bold">-</span>
+                            <span class="text-sm text-gray-400">Grid:</span>
+                            <span id="timeline-grid-pos" class="text-sm font-mono text-cyan-400">[0,0,0]</span>
+                            <span class="text-sm text-gray-400">Type:</span>
+                            <span id="timeline-layer-type" class="text-sm font-mono text-purple-400">-</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Speed Control -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-400">Speed:</span>
+                        <input type="range" id="timeline-speed" min="1" max="100" value="50" class="w-20 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                        <span id="timeline-speed-label" class="text-xs text-cyan-400 w-8">50%</span>
+                    </div>
+                </div>
+                
+                <!-- Timeline Slider -->
+                <div class="relative">
+                    <input type="range" id="timeline-slider" min="0" max="100" value="0" 
+                           class="w-full h-4 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                           oninput="seekTimeline(this.value)" onchange="seekTimeline(this.value)">
+                    
+                    <!-- Timeline Markers (Forward = Green, Backward = Red) -->
+                    <div id="timeline-markers" class="absolute top-0 left-0 w-full h-4 pointer-events-none rounded-lg overflow-hidden">
+                        <!-- Markers inserted by JS -->
+                    </div>
+                </div>
+                
+                <!-- Time labels -->
+                <div class="flex justify-between mt-1">
+                    <span class="text-xs text-gray-500 font-mono">Start</span>
+                    <span id="timeline-total" class="text-xs text-gray-500 font-mono">0 events</span>
+                </div>
             </div>
         </div>
 
@@ -347,6 +397,8 @@
         let globalModels = {};
         let loomModels = {};  // LOOM model data from telemetry files
         let currentLoomModel = null;  // Currently selected LOOM model
+        let currentActivityData = null;  // Recorded neural activity for replay
+        let isReplaying = false;  // Replay animation state
         
         // --- Three.js Globals Moved Below ---
 
@@ -392,6 +444,15 @@
                     loomModels = msg.data;
                     updateLoomSelector(msg.data);
                     showToast(`Found ${Object.keys(msg.data).length} LOOM models`);
+                } else if (msg.type === 'activity_data') {
+                    // Store activity data for replay
+                    currentActivityData = msg.data;
+                    currentEventIndex = 0;  // Reset to start
+                    const evCount = msg.data.events ? msg.data.events.length : 0;
+                    showToast(`Loaded ${evCount} neural activity events`);
+                    showTimeline();  // Show the timeline scrubber
+                } else if (msg.type === 'activity_error') {
+                    showToast(`Activity error: ${msg.error}`);
                 }
             };
         }
@@ -494,7 +555,7 @@
         // --- STATE ---
         let currentVizModel = null;
         let layerPositions = []; // Store layer Z positions for camera fly-to
-        let showInterLayerConnections = false; // Toggle for showing connections between layers
+        let showInterLayerConnections = true; // Connections enabled by default
         let interLayerConnectionGroup = null; // Group for inter-layer connection lines
         let layerNodePositions = []; // Store neuron positions per layer for inter-layer connections
         
@@ -839,7 +900,213 @@
             progress.style.width = '100%';
             text.innerText = 'Done! Click layers to inspect.';
             setTimeout(() => loader.classList.add('hidden'), 500);
+            
+            // Auto-load neural activity for this model
+            const folderPath = document.getElementById('loom-folder-path').value;
+            const modelID = currentLoomModel.id || currentLoomModel.name || 'unknown';
+            sendAction('load_activity', { path: folderPath, model_id: modelID });
         }
+        
+        // Dim all layers to make active one stand out
+        function dimAllLayers() {
+            if (!scene) return;
+            scene.traverse((obj) => {
+                if (obj.userData && obj.userData.isLoom && obj.material) {
+                    obj.material.emissiveIntensity = 0.05;
+                    if (obj.material.opacity !== undefined) {
+                        obj.material.opacity = 0.3;
+                    }
+                }
+            });
+        }
+        
+        // Animate a layer based on an event
+        function animateLayerFromEvent(event) {
+            if (!scene) return;
+            
+            let matchCount = 0;
+            const isForward = event.Type === 'forward';
+            
+            // Find layers by grid position
+            scene.traverse((obj) => {
+                if (obj.userData && obj.userData.isLoom) {
+                    // Match by exact grid position
+                    const gridMatch = obj.userData.gridRow === event.grid_row &&
+                                     obj.userData.gridCol === event.grid_col &&
+                                     obj.userData.cellLayer === event.cell_layer;
+                    
+                    if (gridMatch && obj.material) {
+                        matchCount++;
+                        
+                        // FORWARD = Bright cyan/green, BACKWARD = Hot red/orange
+                        const color = isForward ? 0x00ffff : 0xff0000;
+                        
+                        obj.material.emissive = new THREE.Color(color);
+                        obj.material.emissiveIntensity = 1.5;  // Very bright
+                        
+                        // Make fully visible
+                        if (obj.material.opacity !== undefined) {
+                            obj.material.opacity = 1.0;
+                        }
+                    }
+                }
+            });
+            
+            if (matchCount === 0) {
+                console.log('No match:', event.grid_row, event.grid_col, event.cell_layer, event.Stats?.LayerType);
+            }
+        }
+        
+        // Reset all layer colors to default
+        function resetLayerColors() {
+            if (!scene) return;
+            scene.traverse((obj) => {
+                if (obj.userData && obj.userData.isLoom && obj.material) {
+                    obj.material.emissiveIntensity = 0.2;
+                    if (obj.material.opacity !== undefined) {
+                        obj.material.opacity = 0.9;
+                    }
+                }
+            });
+        }
+        
+        // =========== TIMELINE SCRUBBER FUNCTIONS ===========
+        let currentEventIndex = 0;
+        let timelinePlayInterval = null;
+        
+        // Show the timeline when activity is loaded
+        function showTimeline() {
+            const timeline = document.getElementById('activity-timeline');
+            if (timeline && currentActivityData && currentActivityData.events) {
+                timeline.classList.remove('hidden');
+                initTimelineMarkers();
+                updateTimelineUI();
+            }
+        }
+        
+        // Initialize timeline markers (color coded for forward/backward)
+        function initTimelineMarkers() {
+            const markers = document.getElementById('timeline-markers');
+            const slider = document.getElementById('timeline-slider');
+            if (!markers || !currentActivityData || !currentActivityData.events) return;
+            
+            const events = currentActivityData.events;
+            slider.max = events.length - 1;
+            slider.value = 0;
+            
+            // Create color-coded bar segments
+            let html = '<div class="flex h-full">';
+            for (let i = 0; i < events.length; i++) {
+                const isForward = events[i].Type === 'forward';
+                const color = isForward ? 'bg-green-500/40' : 'bg-red-500/40';
+                const width = 100 / events.length;
+                html += `<div class="${color}" style="width: ${width}%"></div>`;
+            }
+            html += '</div>';
+            markers.innerHTML = html;
+            
+            document.getElementById('timeline-total').textContent = `${events.length} events`;
+        }
+        
+        // Update all timeline UI elements
+        function updateTimelineUI() {
+            if (!currentActivityData || !currentActivityData.events) return;
+            
+            const events = currentActivityData.events;
+            const event = events[currentEventIndex];
+            if (!event) return;
+            
+            // Update slider position
+            document.getElementById('timeline-slider').value = currentEventIndex;
+            
+            // Update event number display
+            document.getElementById('timeline-event-num').textContent = 
+                `${currentEventIndex + 1} / ${events.length}`;
+            
+            // Update direction indicator
+            const dirEl = document.getElementById('timeline-direction');
+            const isForward = event.Type === 'forward';
+            dirEl.textContent = isForward ? '→ FORWARD' : '← BACKWARD';
+            dirEl.className = isForward 
+                ? 'px-3 py-0.5 rounded-full text-sm font-bold bg-green-500 text-white'
+                : 'px-3 py-0.5 rounded-full text-sm font-bold bg-red-500 text-white';
+            
+            // Update grid position
+            document.getElementById('timeline-grid-pos').textContent = 
+                `[${event.grid_row}, ${event.grid_col}, ${event.cell_layer}]`;
+            
+            // Update layer type
+            document.getElementById('timeline-layer-type').textContent = 
+                event.Stats?.LayerType || event.Type || '-';
+            
+            // Animate the layer in 3D
+            dimAllLayers();
+            animateLayerFromEvent(event);
+        }
+        
+        // Play/Pause timeline
+        function playPauseTimeline() {
+            const btn = document.getElementById('timeline-play-btn');
+            
+            if (timelinePlayInterval) {
+                // Pause
+                clearInterval(timelinePlayInterval);
+                timelinePlayInterval = null;
+                btn.textContent = '▶';
+                btn.classList.remove('bg-gradient-to-r', 'from-orange-500', 'to-red-500');
+                btn.classList.add('bg-gradient-to-r', 'from-green-500', 'to-cyan-500');
+            } else {
+                // Play
+                btn.textContent = '⏸';
+                btn.classList.remove('bg-gradient-to-r', 'from-green-500', 'to-cyan-500');
+                btn.classList.add('bg-gradient-to-r', 'from-orange-500', 'to-red-500');
+                
+                const speed = parseInt(document.getElementById('timeline-speed').value);
+                const delay = Math.max(20, 500 - speed * 5);
+                
+                timelinePlayInterval = setInterval(() => {
+                    stepForward();
+                    if (currentEventIndex >= currentActivityData.events.length - 1) {
+                        playPauseTimeline(); // Auto-pause at end
+                    }
+                }, delay);
+            }
+        }
+        
+        // Step forward one event
+        function stepForward() {
+            if (!currentActivityData || !currentActivityData.events) return;
+            if (currentEventIndex < currentActivityData.events.length - 1) {
+                currentEventIndex++;
+                updateTimelineUI();
+            }
+        }
+        
+        // Step backward one event
+        function stepBackward() {
+            if (!currentActivityData || !currentActivityData.events) return;
+            if (currentEventIndex > 0) {
+                currentEventIndex--;
+                updateTimelineUI();
+            }
+        }
+        
+        // Seek to specific event
+        function seekTimeline(value) {
+            if (!currentActivityData || !currentActivityData.events) return;
+            currentEventIndex = parseInt(value);
+            updateTimelineUI();
+        }
+        
+        // Update speed label
+        document.addEventListener('DOMContentLoaded', () => {
+            const speedSlider = document.getElementById('timeline-speed');
+            if (speedSlider) {
+                speedSlider.addEventListener('input', (e) => {
+                    document.getElementById('timeline-speed-label').textContent = e.target.value + '%';
+                });
+            }
+        });
         
         // Helper to get color based on layer type
         function getLayerColor(layerType) {
@@ -889,6 +1156,15 @@
             
             const nodeMat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, opacity: 0.95 });
             const nodes = new THREE.Points(nodeGeo, nodeMat);
+            // Add grid info for animation
+            nodes.userData = {
+                isLoom: true,
+                gridRow: l.grid_row,
+                gridCol: l.grid_col,
+                cellLayer: l.cell_layer,
+                layerType: l.type,
+                layerIndex: layerIndex
+            };
             group.add(nodes);
             
             // Store node positions for inter-layer connections
@@ -926,6 +1202,15 @@
             
             const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending });
             const lines = new THREE.LineSegments(lineGeo, lineMat);
+            // Add grid info for animation
+            lines.userData = {
+                isLoom: true,
+                gridRow: l.grid_row,
+                gridCol: l.grid_col,
+                cellLayer: l.cell_layer,
+                layerType: l.type,
+                layerIndex: layerIndex
+            };
             group.add(lines);
             
             // 3. Label with grid position and type

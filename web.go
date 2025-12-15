@@ -235,6 +235,20 @@ func handleWebSocket(c *websocket.Conn) {
 			if err := json.Unmarshal(msg.Payload, &payload); err == nil && payload.Path != "" {
 				go scanLoomFolder(payload.Path)
 			}
+		case "load_activity":
+			fmt.Printf("🎬 Received load_activity action, payload: %s\n", string(msg.Payload))
+			var payload struct {
+				Path    string `json:"path"`     // Folder path
+				ModelID string `json:"model_id"` // e.g., "network1_all_types"
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				fmt.Printf("⚠️ Error unmarshaling payload: %v\n", err)
+			} else if payload.ModelID == "" {
+				fmt.Printf("⚠️ ModelID is empty in payload\n")
+			} else {
+				fmt.Printf("✓ Loading activity for model: %s from path: %s\n", payload.ModelID, payload.Path)
+				go loadAndSendActivity(c, payload.Path, payload.ModelID)
+			}
 		}
 	}
 }
@@ -1056,4 +1070,53 @@ func broadcastLoomUpdate() {
 	})
 	loomModelsMu.RUnlock()
 	broadcast <- data
+}
+
+// loadAndSendActivity loads a recorded activity file and sends it to the client
+func loadAndSendActivity(c *websocket.Conn, folderPath string, modelID string) {
+	// Map model ID to filename prefix
+	var prefix string
+	switch modelID {
+	case "network1_all_types":
+		prefix = "model1"
+	case "network2_grid_scatter":
+		prefix = "model2"
+	case "network3_normal_mode", "network3_step_mode":
+		prefix = "model3"
+	default:
+		// Try to extract from model ID
+		prefix = strings.Replace(modelID, "_", "", -1)
+	}
+
+	filename := filepath.Join(folderPath, prefix+"_activity.json")
+	fmt.Printf("📂 Loading activity from: %s\n", filename)
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Printf("⚠️ Error reading activity file: %v\n", err)
+		// Send error to client
+		errMsg, _ := json.Marshal(map[string]interface{}{
+			"type":  "activity_error",
+			"error": fmt.Sprintf("Failed to load activity: %v", err),
+		})
+		c.WriteMessage(websocket.TextMessage, errMsg)
+		return
+	}
+
+	// Parse to get event count for logging
+	var activity map[string]interface{}
+	json.Unmarshal(data, &activity)
+	eventCount := 0
+	if events, ok := activity["events"].([]interface{}); ok {
+		eventCount = len(events)
+	}
+
+	fmt.Printf("✓ Loaded activity with %d events for %s\n", eventCount, modelID)
+
+	// Send to client
+	response, _ := json.Marshal(map[string]interface{}{
+		"type": "activity_data",
+		"data": json.RawMessage(data),
+	})
+	c.WriteMessage(websocket.TextMessage, response)
 }
