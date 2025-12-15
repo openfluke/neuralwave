@@ -860,6 +860,11 @@
                     
                     for (let bIdx = 0; bIdx < branchCount; bIdx++) {
                         const branch = l.branches[bIdx];
+                        // Propagate grid info from parent for matching
+                        branch.grid_row = l.grid_row;
+                        branch.grid_col = l.grid_col;
+                        branch.cell_layer = l.cell_layer;
+                        
                         const branchY = startY - (bIdx * branchSpacing);
                         
                         // Color by branch type
@@ -938,25 +943,55 @@
                                      obj.userData.cellLayer === event.cell_layer;
                     
                     if (gridMatch && obj.material) {
-                        // For parallel branches, also check the branch index
+                        // Strict matching for Parallel Branches
                         if (isParallelBranch) {
-                            // Only match if this object has the same branchIdx
-                            if (obj.userData.branchIdx !== branchIdx) {
-                                return; // Skip this object, wrong branch
+                            if (!obj.userData.isBranch || obj.userData.branchIdx !== branchIdx) {
+                                return; // Skip if not a branch or wrong branch
+                            }
+                        } else {
+                            // If event is generic layer (not branch), do NOT match individual branches
+                            // Unless the layer itself is not a container
+                            if (obj.userData.isBranch) {
+                                return;
                             }
                         }
                         
                         matchCount++;
                         
-                        // FORWARD = Bright cyan/green, BACKWARD = Hot red/orange
-                        const color = isForward ? 0x00ffff : 0xff0000;
-                        
-                        obj.material.emissive = new THREE.Color(color);
-                        obj.material.emissiveIntensity = 1.5;  // Very bright
-                        
-                        // Make fully visible
-                        if (obj.material.opacity !== undefined) {
+                        // Color logic based on Mode and Direction (From previous edit)
+                        let colorHex;
+                        const isStep = event.mode === 'step';
+                        if (isStep) {
+                            colorHex = isForward ? 0xa855f7 : 0xf97316; // Purple/Orange
+                        } else {
+                            colorHex = isForward ? 0x00ffff : 0xff0000; // Cyan/Red
+                        }
+                        const highlightColor = new THREE.Color(colorHex);
+
+                        // Apply Highlight based on Material Type
+                        if (obj.material.emissive !== undefined) {
+                            // Standard Material (Meshes)
+                            obj.material.emissive = highlightColor;
+                            obj.material.emissiveIntensity = 1.5;
                             obj.material.opacity = 1.0;
+                        } else {
+                            // Points or Basic Lines - Tint them
+                            if (obj.material.color) {
+                                // Store original color if not stored
+                                if (!obj.userData.originalColor) {
+                                    obj.userData.originalColor = obj.material.color.clone();
+                                }
+                                obj.material.color = highlightColor;
+                            }
+                            // Increase opacity for visibility
+                            if (obj.material.opacity !== undefined) {
+                                obj.userData.originalOpacity = obj.material.opacity;
+                                obj.material.opacity = 1.0;
+                            }
+                            // Increase size for points?
+                            if (obj.material.size !== undefined) {
+                                obj.material.size = 0.4; // Double size
+                            }
                         }
                     }
                 }
@@ -973,9 +1008,26 @@
             if (!scene) return;
             scene.traverse((obj) => {
                 if (obj.userData && obj.userData.isLoom && obj.material) {
-                    obj.material.emissiveIntensity = 0.2;
+                    if (obj.material.emissive !== undefined) {
+                         obj.material.emissiveIntensity = 0.2;
+                         obj.material.emissive = new THREE.Color(0x000000); // Reset emissive
+                    } else if (obj.userData.originalColor) {
+                         // Reset tint for Points/Lines
+                         obj.material.color.copy(obj.userData.originalColor);
+                    }
+                    
+                    // Reset opacity
                     if (obj.material.opacity !== undefined) {
-                        obj.material.opacity = 0.9;
+                        if (obj.userData.originalOpacity) {
+                            obj.material.opacity = obj.userData.originalOpacity;
+                        } else {
+                            // Default fallback
+                             obj.material.opacity = (obj.type === 'Points') ? 0.95 : 0.35;
+                        }
+                    }
+                    // Reset size
+                    if (obj.material.size !== undefined) {
+                        obj.material.size = 0.2;
                     }
                 }
             });
@@ -1009,7 +1061,13 @@
             let html = '<div class="flex h-full">';
             for (let i = 0; i < events.length; i++) {
                 const isForward = events[i].Type === 'forward';
-                const color = isForward ? 'bg-green-500/40' : 'bg-red-500/40';
+                const isStep = events[i].mode === 'step';
+                let color;
+                if (isStep) {
+                    color = isForward ? 'bg-purple-500/40' : 'bg-orange-500/40';
+                } else {
+                    color = isForward ? 'bg-green-500/40' : 'bg-red-500/40';
+                }
                 const width = 100 / events.length;
                 html += `<div class="${color}" style="width: ${width}%"></div>`;
             }
@@ -1035,12 +1093,25 @@
                 `${currentEventIndex + 1} / ${events.length}`;
             
             // Update direction indicator
+            // Update direction indicator with Mode
             const dirEl = document.getElementById('timeline-direction');
             const isForward = event.Type === 'forward';
-            dirEl.textContent = isForward ? '→ FORWARD' : '← BACKWARD';
-            dirEl.className = isForward 
-                ? 'px-3 py-0.5 rounded-full text-sm font-bold bg-green-500 text-white'
-                : 'px-3 py-0.5 rounded-full text-sm font-bold bg-red-500 text-white';
+            const isStep = event.mode === 'step';
+            
+            let modeText = isStep ? 'STEP' : 'NORMAL';
+            let dirText = isForward ? `→ FWD (${modeText})` : `← BWD (${modeText})`;
+            
+            dirEl.textContent = dirText;
+            
+            if (isStep) {
+                 dirEl.className = isForward 
+                    ? 'px-3 py-0.5 rounded-full text-sm font-bold bg-purple-500 text-white'
+                    : 'px-3 py-0.5 rounded-full text-sm font-bold bg-orange-500 text-white';
+            } else {
+                 dirEl.className = isForward 
+                    ? 'px-3 py-0.5 rounded-full text-sm font-bold bg-green-500 text-white'
+                    : 'px-3 py-0.5 rounded-full text-sm font-bold bg-red-500 text-white';
+            }
             
             // Update grid position (include branch info if parallel branch)
             let gridPosText = `[${event.grid_row}, ${event.grid_col}, ${event.cell_layer}]`;
@@ -1180,7 +1251,9 @@
                 gridCol: l.grid_col,
                 cellLayer: l.cell_layer,
                 layerType: l.type,
-                layerIndex: layerIndex
+                layerIndex: layerIndex,
+                isBranch: isBranch,
+                branchIdx: branchIndex
             };
             group.add(nodes);
             
@@ -1226,7 +1299,9 @@
                 gridCol: l.grid_col,
                 cellLayer: l.cell_layer,
                 layerType: l.type,
-                layerIndex: layerIndex
+                layerIndex: layerIndex,
+                isBranch: isBranch,
+                branchIdx: branchIndex
             };
             group.add(lines);
             

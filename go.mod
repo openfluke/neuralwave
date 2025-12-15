@@ -7,6 +7,8 @@ require (
 	github.com/openfluke/loom v0.0.5
 )
 
+replace github.com/openfluke/loom => ./loom
+
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/fasthttp/websocket v1.5.8 // indirect
