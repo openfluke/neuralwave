@@ -1085,6 +1085,10 @@ func loadAndSendActivity(c *websocket.Conn, folderPath string, modelID string) {
 		prefix = "model3"
 	case "network3_step_mode":
 		prefix = "model3_stepping"
+	case "network4_grid_demo":
+		prefix = "model4"
+	case "network5_parallel_demo":
+		prefix = "model5"
 	default:
 		// Try to extract from model ID
 		prefix = strings.Replace(modelID, "_", "", -1)
