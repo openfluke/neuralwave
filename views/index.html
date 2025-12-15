@@ -926,8 +926,10 @@
             
             let matchCount = 0;
             const isForward = event.Type === 'forward';
+            const isParallelBranch = event.is_parallel_branch === true;
+            const branchIdx = event.branch_idx;
             
-            // Find layers by grid position
+            // Find layers by grid position (and optionally branch index)
             scene.traverse((obj) => {
                 if (obj.userData && obj.userData.isLoom) {
                     // Match by exact grid position
@@ -936,6 +938,14 @@
                                      obj.userData.cellLayer === event.cell_layer;
                     
                     if (gridMatch && obj.material) {
+                        // For parallel branches, also check the branch index
+                        if (isParallelBranch) {
+                            // Only match if this object has the same branchIdx
+                            if (obj.userData.branchIdx !== branchIdx) {
+                                return; // Skip this object, wrong branch
+                            }
+                        }
+                        
                         matchCount++;
                         
                         // FORWARD = Bright cyan/green, BACKWARD = Hot red/orange
@@ -953,7 +963,8 @@
             });
             
             if (matchCount === 0) {
-                console.log('No match:', event.grid_row, event.grid_col, event.cell_layer, event.Stats?.LayerType);
+                console.log('No match:', event.grid_row, event.grid_col, event.cell_layer, 
+                            'branch:', branchIdx, 'isParallel:', isParallelBranch);
             }
         }
         
@@ -1031,13 +1042,19 @@
                 ? 'px-3 py-0.5 rounded-full text-sm font-bold bg-green-500 text-white'
                 : 'px-3 py-0.5 rounded-full text-sm font-bold bg-red-500 text-white';
             
-            // Update grid position
-            document.getElementById('timeline-grid-pos').textContent = 
-                `[${event.grid_row}, ${event.grid_col}, ${event.cell_layer}]`;
+            // Update grid position (include branch info if parallel branch)
+            let gridPosText = `[${event.grid_row}, ${event.grid_col}, ${event.cell_layer}]`;
+            if (event.is_parallel_branch) {
+                gridPosText += ` Branch ${event.branch_idx}`;
+            }
+            document.getElementById('timeline-grid-pos').textContent = gridPosText;
             
-            // Update layer type
-            document.getElementById('timeline-layer-type').textContent = 
-                event.Stats?.LayerType || event.Type || '-';
+            // Update layer type (show branch type for parallel branches)
+            let layerTypeText = event.Stats?.LayerType || event.Type || '-';
+            if (event.is_parallel_branch) {
+                layerTypeText = `Branch: ${layerTypeText}`;
+            }
+            document.getElementById('timeline-layer-type').textContent = layerTypeText;
             
             // Animate the layer in 3D
             dimAllLayers();
